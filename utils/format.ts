@@ -1,4 +1,6 @@
 
+import { TransacaoBanco, TipoCategoria } from '../types';
+
 export const brMoney = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
   currency: 'BRL',
@@ -20,15 +22,37 @@ export const formatDate = (dateString: string): string => {
   }
 };
 
-// Analisa uma string de moeda BRL (ex: "1.234,56") e converte para um número.
+// Analisa uma string de moeda BRL (ex: "- R$ 1.234,56") e converte para um número.
 export const parseCurrency = (value: string): number => {
     if (typeof value !== 'string' || value.trim() === '') {
         return 0;
     }
-    // Remove R$, spaces, and thousand separators, then replace comma with dot.
-    const cleanedValue = value.replace(/[R$\s.]/g, '').replace(',', '.');
-    const number = parseFloat(cleanedValue);
+    // 1. Remove thousand separators (dots)
+    // 2. Replace decimal separator (comma) with dot
+    // 3. Remove everything else except digits, dot and minus sign
+    const cleaned = value
+        .replace(/\./g, '') // remove dots
+        .replace(',', '.') // replace comma with dot
+        .replace(/[^\d.-]/g, ''); // remove anything not a digit, dot or minus
+    
+    const number = parseFloat(cleaned);
     return isNaN(number) ? 0 : number;
+};
+
+// Parses a DD/MM/YYYY date string into YYYY-MM-DD
+export const parseBrDate = (dateString: string): string | null => {
+    if (typeof dateString !== 'string') return null;
+    const parts = dateString.trim().split('/');
+    if (parts.length !== 3) return null;
+    const [day, month, year] = parts;
+    if (day.length > 2 || month.length > 2 || year.length !== 4) return null;
+    
+    // Basic validation
+    const d = parseInt(day, 10);
+    const m = parseInt(month, 10);
+    if (d < 1 || d > 31 || m < 1 || m > 12) return null;
+    
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
 };
 
 export function roundHalfUp(n: number, decimals = 2) {
@@ -63,3 +87,21 @@ export function splitInstallments(total: number, n: number): number[] {
   for (let i = 0; i < resto; i++) arr[i] += 1; // distribute remaining cents
   return arr.map(c => roundHalfUp(c / 100, 2));
 }
+
+export const calculateSaldo = (contaId: string, transacoes: TransacaoBanco[], ateData?: string): number => {
+    return transacoes
+        .filter(t => t.conta_id === contaId && t.realizado && (!ateData || t.data <= ateData))
+        .reduce((sum, t) => {
+            if (t.tipo === TipoCategoria.Entrada) return sum + t.valor;
+            if (t.tipo === TipoCategoria.Saida || t.tipo === TipoCategoria.Investimento) return sum - t.valor;
+            if (t.tipo === TipoCategoria.Transferencia) {
+                if (t.meta_saldo_inicial) return sum + t.valor;
+                if (t.meta_pagamento) return sum - t.valor;
+                // Simple deterministic rule for two-leg transfers: smaller ID is debit
+                const pair = transacoes.find(p => p.id === t.transferencia_par_id);
+                if (pair && t.id < pair.id) return sum - t.valor;
+                return sum + t.valor;
+            }
+            return sum;
+        }, 0);
+};

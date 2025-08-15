@@ -1,40 +1,25 @@
+
+
 import React, { useState, useMemo, useEffect } from 'react';
-import { ContaBancaria, TransacaoBanco, Categoria, TipoCategoria, ModalState, NavigationState } from '../types';
+import { Plus, Pencil, Trash2, FilterX, Search, ArrowRightLeft, Landmark } from 'lucide-react';
+
 import PageHeader from '../components/PageHeader';
 import Modal from '../components/Modal';
 import CurrencyInput from '../components/CurrencyInput';
-import { formatCurrency, formatDate } from '../utils/format';
-import { Plus, Pencil, Trash2, FilterX, Search, ArrowRightLeft, Landmark } from 'lucide-react';
-import KpiCard from '../components/KpiCard';
-import { getCategoryIcon } from '../constants';
+import KPICard from '../components/KPICard';
 import DatePeriodSelector from '../components/DatePeriodSelector';
+import { ContaBancaria, TransacaoBanco, Categoria, TipoCategoria, ModalState, NavigationState } from '../types';
+import { getCategoryIcon } from '../constants';
+import { formatCurrency, formatDate, calculateSaldo } from '../utils/format';
+
 
 const getTodayString = () => new Date().toISOString().split('T')[0];
-
-// Helper function to calculate balance for a single account
-const calculateSaldo = (contaId: string, transacoes: TransacaoBanco[]): number => {
-    return transacoes
-        .filter(t => t.conta_id === contaId && t.realizado)
-        .reduce((sum, t) => {
-            if (t.tipo === TipoCategoria.Entrada) return sum + t.valor;
-            if (t.tipo === TipoCategoria.Saida) return sum - t.valor;
-            if (t.tipo === TipoCategoria.Transferencia) {
-                if (t.meta_saldo_inicial) return sum + t.valor;
-                if (t.meta_pagamento) return sum - t.valor;
-                // Simple deterministic rule for two-leg transfers: smaller ID is debit
-                const pair = transacoes.find(p => p.id === t.transferencia_par_id);
-                if (pair && t.id < pair.id) return sum - t.valor;
-                return sum + t.valor;
-            }
-            return sum;
-        }, 0);
-};
 
 interface ContasExtratoPageProps {
   contas: ContaBancaria[];
   transacoes: TransacaoBanco[];
   categorias: Categoria[];
-  addConta: (conta: { nome: string; saldo_inicial: number; ativo: boolean; data_inicial: string; }) => boolean;
+  addConta: (conta: { nome: string; saldo_inicial: number; ativo: boolean; data_inicial: string; }) => ContaBancaria | null;
   updateConta: (conta: Omit<ContaBancaria, 'saldo_inicial'>, novoSaldoInicial: number, novaDataInicial: string) => void;
   deleteConta: (id: string) => void;
   deleteTransacao: (id: string) => void;
@@ -102,7 +87,7 @@ const ContasExtratoPage: React.FC<ContasExtratoPageProps> = ({
         .reduce((sum, t) => sum + t.valor, 0);
         
     const saidasMes = transacoesMes
-        .filter(t => t.tipo === TipoCategoria.Saida)
+        .filter(t => t.tipo === TipoCategoria.Saida || t.tipo === TipoCategoria.Investimento)
         .reduce((sum, t) => sum + t.valor, 0);
 
     return { saldoConsolidado, entradasMes, saidasMes };
@@ -150,7 +135,6 @@ const ContasExtratoPage: React.FC<ContasExtratoPageProps> = ({
       if (!contaForm.nome || !contaForm.data_inicial) return;
       const saldo = parseFloat(contaForm.saldo_inicial) / 100 || 0;
       
-      let success = false;
       if (editingConta) {
           const contaDataToUpdate: Omit<ContaBancaria, 'saldo_inicial' | 'updatedAt'> = {
             id: editingConta.id,
@@ -160,12 +144,12 @@ const ContasExtratoPage: React.FC<ContasExtratoPageProps> = ({
             createdAt: editingConta.createdAt,
           };
           updateConta(contaDataToUpdate, saldo, contaForm.data_inicial);
-          success = true;
-      } else {
-          success = addConta({ nome: contaForm.nome, saldo_inicial: saldo, ativo: contaForm.ativo, data_inicial: contaForm.data_inicial });
-      }
-      if (success) {
           closeModal();
+      } else {
+          const novaConta = addConta({ nome: contaForm.nome, saldo_inicial: saldo, ativo: contaForm.ativo, data_inicial: contaForm.data_inicial });
+          if (novaConta) {
+              closeModal();
+          }
       }
   };
 
@@ -183,165 +167,180 @@ const ContasExtratoPage: React.FC<ContasExtratoPageProps> = ({
   
   const clearFilters = () => setFilters({ categoriaFiltro: '', tipoFiltro: '', textoFiltro: '' });
 
-  const handleSelect = (id: string) => setSelectedIds(prev => {
+  const handleSelect = (id: string) => {
+    setSelectedIds(prev => {
       const newSet = new Set(prev);
       if (newSet.has(id)) newSet.delete(id); else newSet.add(id);
       return newSet;
-  });
-
-  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.checked) { setSelectedIds(new Set(transacoesFiltradas.map(t => t.id))); } 
-    else { setSelectedIds(new Set()); }
+    });
   };
 
-  const handleBulkDelete = () => {
-    deleteTransacoes(Array.from(selectedIds));
-    setSelectedIds(new Set());
+  const handleSelectAll = () => {
+      if (selectedIds.size === transacoesFiltradas.length) {
+          setSelectedIds(new Set());
+      } else {
+          setSelectedIds(new Set(transacoesFiltradas.map(t => t.id)));
+      }
   };
+
+  const isAllSelected = selectedIds.size > 0 && selectedIds.size === transacoesFiltradas.length;
+
+  const selectedConta = selectedView !== 'all' ? contas.find(c => c.id === selectedView) : null;
 
   return (
     <div className="animate-fade-in flex flex-col h-full">
-        {/* Header */}
-        <div className="text-center">
-            <h2 className="text-3xl font-bold text-white mb-2">Contas e Extrato</h2>
+      {/* Header */}
+      <div className="text-center">
+        <h2 className="text-3xl font-bold text-white mb-2">Contas e Extrato</h2>
+      </div>
+      <div className="flex justify-center mb-6">
+        <DatePeriodSelector selectedMonth={selectedMonth} onMonthChange={onMonthChange} />
+      </div>
+
+      {/* Body */}
+      <div className="flex flex-1 space-x-6 overflow-hidden">
+        {/* Account Navigation Sidebar */}
+        <div className="w-64 bg-gray-800 rounded-lg flex flex-col p-3">
+          <div className="flex-grow space-y-2 overflow-y-auto no-scrollbar">
+            <button onClick={() => setSelectedView('all')} className={`w-full text-left p-3 rounded-lg flex items-center justify-between transition-colors ${selectedView === 'all' ? 'bg-green-500/80 text-white' : 'bg-gray-700/50 hover:bg-gray-700'}`}>
+              <span className="flex items-center space-x-3"><Landmark size={20} /><span>Todas as Contas</span></span>
+              <span className="text-xs font-mono">{formatCurrency(contasComSaldo.reduce((acc, c) => acc + c.saldoAtual, 0))}</span>
+            </button>
+            <hr className="border-gray-700" />
+            {contasComSaldo.filter(c => c.ativo).sort((a,b) => a.nome.localeCompare(b.nome)).map(conta => (
+              <button key={conta.id} onClick={() => setSelectedView(conta.id)} className={`w-full text-left p-3 rounded-lg flex items-center justify-between transition-colors ${selectedView === conta.id ? 'bg-green-500/80 text-white' : 'bg-gray-700/50 hover:bg-gray-700'}`}>
+                <span className="flex items-center space-x-3"><Landmark size={20} /><span>{conta.nome}</span></span>
+                <span className="text-xs font-mono">{formatCurrency(conta.saldoAtual)}</span>
+              </button>
+            ))}
+            {contasComSaldo.filter(c => !c.ativo).length > 0 && <hr className="border-gray-700" />}
+            {contasComSaldo.filter(c => !c.ativo).sort((a,b) => a.nome.localeCompare(b.nome)).map(conta => (
+                <button key={conta.id} onClick={() => setSelectedView(conta.id)} className={`w-full text-left p-3 rounded-lg flex items-center justify-between transition-colors text-gray-500 ${selectedView === conta.id ? 'bg-green-500/80 text-white' : 'bg-gray-700/50 hover:bg-gray-700'}`}>
+                <span className="flex items-center space-x-3"><Landmark size={20} /><span>{conta.nome}</span></span>
+                <span className="text-xs font-mono">{formatCurrency(conta.saldoAtual)}</span>
+              </button>
+            ))}
+          </div>
+          <div className="pt-3 mt-auto border-t border-gray-700/50">
+            <button onClick={() => openModal('nova-conta')} className="w-full text-center p-2 rounded-lg flex items-center justify-center space-x-2 transition-colors bg-gray-700/50 text-gray-300 hover:bg-gray-700 hover:text-white opacity-70 hover:opacity-100">
+              <Plus size={16} /><span>Nova Conta</span>
+            </button>
+          </div>
         </div>
-        <div className="flex justify-center mb-6">
-            <DatePeriodSelector selectedMonth={selectedMonth} onMonthChange={onMonthChange} />
-        </div>
-        
-        {/* Body */}
-        <div className="flex flex-1 space-x-6 overflow-hidden">
-            {/* Account Navigation Sidebar */}
-            <div className="w-72 bg-gray-800 rounded-lg flex flex-col p-3">
-                <div className="flex-grow space-y-2 overflow-y-auto no-scrollbar">
-                <button onClick={() => setSelectedView('all')} className={`w-full text-left p-3 rounded-lg flex items-center justify-between transition-colors ${selectedView === 'all' ? 'bg-green-500/80 text-white' : 'bg-gray-700/50 hover:bg-gray-700'}`}>
-                    <div className="flex items-center space-x-3"><Landmark size={20} /><span>Todas as Contas</span></div>
-                </button>
-                <hr className="border-gray-700" />
-                {contasComSaldo.filter(c => c.ativo).sort((a, b) => a.nome.localeCompare(b.nome)).map(conta => (
-                    <button key={conta.id} onClick={() => setSelectedView(conta.id)} className={`w-full text-left p-3 rounded-lg flex items-center justify-between transition-colors ${selectedView === conta.id ? 'bg-green-500/80 text-white' : 'bg-gray-700/50 hover:bg-gray-700'}`}>
-                    <span className="font-medium">{conta.nome}</span>
-                    <span className={`text-sm font-semibold px-2 py-0.5 rounded-full ${conta.saldoAtual >= 0 ? 'bg-green-200/20 text-green-300' : 'bg-red-200/20 text-red-300'}`}>{formatCurrency(conta.saldoAtual)}</span>
-                    </button>
-                ))}
-                {contas.length === 0 && (
-                        <div className="text-center py-10 text-gray-500">
-                            <p>Nenhuma conta cadastrada.</p>
-                        </div>
-                    )}
-                </div>
-                <div className="pt-3 mt-auto border-t border-gray-700/50">
-                <button onClick={() => openModal('nova-conta')} className="w-full text-center p-2 rounded-lg flex items-center justify-center space-x-2 transition-colors bg-gray-700/50 text-gray-300 hover:bg-gray-700 hover:text-white opacity-70 hover:opacity-100">
-                    <Plus size={16} /><span>Nova Conta</span>
-                </button>
-                </div>
+
+        {/* Main Content */}
+        <div className="flex-1 flex flex-col bg-gray-800 rounded-lg p-4 overflow-hidden">
+          <div className="flex justify-between items-center mb-4">
+            <div>
+                <h3 className="text-lg font-semibold">{selectedConta ? `Extrato: ${selectedConta.nome}` : 'Extrato Consolidado'}</h3>
+                {selectedConta && <div className="flex space-x-2 mt-1"><button onClick={() => openModal('editar-conta', { conta: selectedConta })} className="text-xs text-gray-400 hover:text-blue-400">Editar</button><button onClick={() => deleteConta(selectedConta.id)} className="text-xs text-gray-400 hover:text-red-400">Excluir</button></div>}
             </div>
-            
-            {/* Main Content */}
-            <div className="flex-1 flex flex-col">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-                    <KpiCard label="Saldo Consolidado" value={kpisData.saldoConsolidado} icon="bank" />
-                    <KpiCard label="Entradas no Mês" value={kpisData.entradasMes} icon="up" />
-                    <KpiCard label="Saídas no Mês" value={kpisData.saidasMes} icon="down" />
-                </div>
+            <div className="flex space-x-2">
+                <KPICard label="Entradas" value={kpisData.entradasMes} icon="up" />
+                <KPICard label="Saídas" value={kpisData.saidasMes} icon="down" />
+                <KPICard label="Saldo" value={kpisData.saldoConsolidado} icon="bank" />
+            </div>
+          </div>
 
-                <div className="bg-gray-800 rounded-lg p-4 flex-grow flex flex-col">
-                <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-lg font-semibold">Extrato do Mês</h3>
-                    <div className="flex space-x-2">
-                    <button onClick={() => openModal('nova-transferencia', { contaId: selectedView !== 'all' ? selectedView : undefined })} className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-3 rounded-lg flex items-center space-x-2 text-sm"> <ArrowRightLeft size={16}/><span>Nova Transferência</span> </button>
-                    <button onClick={() => openModal('nova-transacao', { contaId: selectedView !== 'all' ? selectedView : undefined })} className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-3 rounded-lg flex items-center space-x-2 text-sm"> <Plus size={16}/><span>Nova Transação</span> </button>
-                    </div>
-                </div>
-                
-                    <div className="bg-gray-800/50 rounded-lg p-4 mb-4 border border-gray-700/50">
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                            <select value={filters.categoriaFiltro} onChange={e => handleFilterChange('categoriaFiltro', e.target.value)} className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-green-500">
-                                <option value="">Todas as Categorias</option>
-                                {categorias.filter(c => !c.sistema).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
-                            </select>
-                            <select value={filters.tipoFiltro} onChange={e => handleFilterChange('tipoFiltro', e.target.value)} className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-green-500">
-                                <option value="">Todos os Tipos</option>
-                                {Object.values(TipoCategoria).filter(t => t !== TipoCategoria.Transferencia).map(t => <option key={t} value={t}>{t}</option>)}
-                            </select>
-                            <div className="relative col-span-1 md:col-span-2 lg:col-span-1">
-                                <input type="text" value={filters.textoFiltro} onChange={e => handleFilterChange('textoFiltro', e.target.value)} placeholder="Buscar por descrição..." className="w-full bg-gray-700 border border-gray-600 rounded-lg pl-10 pr-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-green-500" />
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18}/>
-                            </div>
-                            <button onClick={clearFilters} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center space-x-2 transition-colors">
-                                <FilterX size={18} /><span>Limpar Filtros</span>
-                            </button>
-                        </div>
-                    </div>
+          {/* Filters */}
+          <div className="flex items-center space-x-2 mb-4 p-2 bg-gray-900/50 rounded-lg">
+             <div className="relative flex-grow">
+                <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input type="text" placeholder="Buscar por descrição..." value={filters.textoFiltro} onChange={e => handleFilterChange('textoFiltro', e.target.value)} className="w-full bg-gray-700 pl-10 pr-4 py-2 rounded-md text-sm" />
+             </div>
+             <select value={filters.categoriaFiltro} onChange={e => handleFilterChange('categoriaFiltro', e.target.value)} className="bg-gray-700 p-2 rounded-md text-sm">
+                <option value="">Todas as categorias</option>
+                {categorias.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+             </select>
+             <select value={filters.tipoFiltro} onChange={e => handleFilterChange('tipoFiltro', e.target.value)} className="bg-gray-700 p-2 rounded-md text-sm">
+                <option value="">Todos os tipos</option>
+                {Object.values(TipoCategoria).map(t => <option key={t} value={t}>{t}</option>)}
+             </select>
+             <button onClick={clearFilters} className="p-2 bg-gray-700 rounded-md hover:bg-gray-600" title="Limpar filtros"><FilterX size={20}/></button>
+          </div>
 
-                    {selectedIds.size > 0 && (
-                        <div className="bg-blue-900/50 border border-blue-700 rounded-lg p-3 mb-4 flex justify-between items-center animate-fade-in">
-                            <span className="text-white">{selectedIds.size} transaçõ{selectedIds.size > 1 ? 'es' : 'ão'} selecionada{selectedIds.size > 1 ? 's' : ''}</span>
-                            <button onClick={handleBulkDelete} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-3 rounded-lg flex items-center space-x-2 text-sm"> <Trash2 size={16} /><span>Excluir Selecionadas</span> </button>
-                        </div>
-                    )}
+          <div className="overflow-y-auto flex-grow">
+            <table className="w-full text-center text-sm">
+                <thead className="sticky top-0 bg-gray-800">
+                    <tr>
+                        <th className="p-2 w-10"><input type="checkbox" checked={isAllSelected} onChange={handleSelectAll} className="h-4 w-4" /></th>
+                        <th className="p-2 font-semibold text-left">Data</th>
+                        {selectedView === 'all' && <th className="p-2 font-semibold text-left">Conta</th>}
+                        <th className="p-2 font-semibold text-left">Descrição</th>
+                        <th className="p-2 font-semibold text-left">Categoria</th>
+                        <th className="p-2 font-semibold text-right">Valor</th>
+                        <th className="p-2 font-semibold text-center w-24">Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {transacoesFiltradas.map(t => {
+                    const categoria = categorias.find(c => c.id === t.categoria_id);
+                    const conta = selectedView === 'all' ? contas.find(c => c.id === t.conta_id) : null;
+                    const isTransfer = t.tipo === TipoCategoria.Transferencia && !t.meta_saldo_inicial && !t.meta_pagamento;
+                    let valor = t.valor;
+                    let valorClass = "text-gray-300";
+                    if (t.tipo === TipoCategoria.Entrada || (isTransfer && t.transferencia_par_id && t.id > t.transferencia_par_id)) {
+                        valorClass = "text-green-500";
+                    } else if (t.tipo === TipoCategoria.Saida || t.tipo === TipoCategoria.Investimento || t.meta_pagamento || (isTransfer && t.transferencia_par_id && t.id < t.transferencia_par_id)) {
+                        valorClass = "text-red-500";
+                        valor = -t.valor;
+                    }
 
-                <div className="overflow-y-auto flex-grow">
-                    <table className="w-full text-left text-sm">
-                    <thead className="sticky top-0 bg-gray-800">
-                        <tr>
-                        <th className="p-3 w-12"><input type="checkbox" onChange={handleSelectAll} checked={selectedIds.size > 0 && selectedIds.size === transacoesFiltradas.length} className="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500 bg-gray-700" /></th>
-                        <th className="p-3 font-semibold">Data</th>
-                        {selectedView === 'all' && <th className="p-3 font-semibold">Conta</th>}
-                        <th className="p-3 font-semibold">Descrição</th>
-                        <th className="p-3 font-semibold">Categoria</th>
-                        <th className="p-3 font-semibold text-right">Valor</th>
-                        <th className="p-3 font-semibold text-center">Ações</th>
+                    return (
+                        <tr key={t.id} className="border-t border-gray-700 hover:bg-gray-700/50">
+                            <td className="p-2"><input type="checkbox" checked={selectedIds.has(t.id)} onChange={() => handleSelect(t.id)} className="h-4 w-4" /></td>
+                            <td className="p-2 text-left">{formatDate(t.data)}</td>
+                            {selectedView === 'all' && <td className="p-2 text-left">{conta?.nome}</td>}
+                            <td className="p-2 text-left flex items-center space-x-2">
+                                {isTransfer && <ArrowRightLeft size={14} className="text-blue-400"/>}
+                                <span>{t.descricao}</span>
+                                {!t.realizado && <span className="text-xs font-bold text-yellow-400 bg-yellow-900/50 px-2 py-0.5 rounded-full">Previsto</span>}
+                            </td>
+                            <td className="p-2 text-left flex items-center space-x-2">
+                                {categoria && getCategoryIcon(categoria.tipo)}
+                                <span>{categoria?.nome || 'N/A'}</span>
+                            </td>
+                            <td className={`p-2 text-right font-medium ${valorClass}`}>{formatCurrency(valor)}</td>
+                            <td className="p-2">
+                                <div className="flex justify-center space-x-3">
+                                <button onClick={() => handleEditClick(t)} className="text-gray-400 hover:text-blue-400"><Pencil size={16}/></button>
+                                <button onClick={() => deleteTransacao(t.id)} className="text-gray-400 hover:text-red-400"><Trash2 size={16}/></button>
+                                </div>
+                            </td>
                         </tr>
-                    </thead>
-                    <tbody>
-                        {transacoesFiltradas.map(t => {
-                            const categoria = categorias.find(c => c.id === t.categoria_id);
-                            const isSaldoInicial = t.meta_saldo_inicial;
-                            const isSaldoInicialBlocked = isSaldoInicial && transacoes.some(tx => tx.conta_id === t.conta_id && !tx.meta_saldo_inicial);
-                            const actionTooltip = isSaldoInicialBlocked ? "Edição de saldo inicial bloqueada pois a conta já possui outros movimentos." : "Editar transação";
-
-                            return (
-                                <tr key={t.id} className={`border-t border-gray-700 ${selectedIds.has(t.id) ? 'bg-blue-900/30' : 'hover:bg-gray-700/50'}`}>
-                                    <td className="p-3"><input type="checkbox" checked={selectedIds.has(t.id)} onChange={() => handleSelect(t.id)} className="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500 bg-gray-700" /></td>
-                                    <td className="p-3">{formatDate(t.data)}</td>
-                                    {selectedView === 'all' && <td className="p-3">{contas.find(c => c.id === t.conta_id)?.nome}</td>}
-                                    <td className="p-3">{t.descricao}</td>
-                                    <td className="p-3 flex items-center space-x-2">{categoria && getCategoryIcon(categoria.tipo)}<span>{categoria?.nome}</span></td>
-                                    <td className={`p-3 text-right font-semibold ${t.tipo === 'Entrada' || (t.tipo === 'Transferencia' && t.meta_saldo_inicial) ? 'text-green-400' : 'text-red-400'}`}>{formatCurrency(t.valor)}</td>
-                                    <td className="p-3 flex justify-center space-x-3">
-                                        <button onClick={() => handleEditClick(t)} className={`text-gray-400 ${isSaldoInicialBlocked ? 'cursor-not-allowed text-gray-600' : 'hover:text-blue-400'}`} title={actionTooltip} disabled={isSaldoInicialBlocked}><Pencil size={16}/></button>
-                                        <button onClick={() => deleteTransacao(t.id)} className={`text-gray-400 ${isSaldoInicialBlocked ? 'cursor-not-allowed text-gray-600' : 'hover:text-red-400'}`} title={actionTooltip.replace('Edição', 'Exclusão')} disabled={isSaldoInicialBlocked}><Trash2 size={16}/></button>
-                                    </td>
-                                </tr>
-                            )
-                        })}
-                        {transacoesFiltradas.length === 0 && ( <tr><td colSpan={selectedView === 'all' ? 7 : 6} className="text-center text-gray-400 py-8">Nenhuma transação encontrada para este período.</td></tr> )}
-                    </tbody>
-                    </table>
-                </div>
-                </div>
+                    );
+                })}
+                {transacoesFiltradas.length === 0 && (
+                    <tr><td colSpan={selectedView === 'all' ? 7 : 6} className="text-center text-gray-400 py-8">Nenhuma transação encontrada para os filtros aplicados.</td></tr>
+                )}
+                </tbody>
+            </table>
+          </div>
+          {selectedIds.size > 0 && (
+            <div className="mt-4 p-2 bg-gray-900/50 rounded-lg flex justify-between items-center">
+                <span>{selectedIds.size} transações selecionadas</span>
+                <button onClick={() => deleteTransacoes(Array.from(selectedIds))} className="bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-3 rounded-lg flex items-center space-x-2">
+                    <Trash2 size={16} />
+                    <span>Excluir Selecionadas</span>
+                </button>
             </div>
+          )}
         </div>
-      
-      {/* Modals */}
-        <Modal isOpen={isContaModalOpen} onClose={closeModal} title={editingConta ? "Editar Conta" : "Nova Conta"} footer={
-            <>
-                <button type="button" onClick={closeModal} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg">Cancelar</button>
-                <button type="submit" form="conta-form" className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg">Salvar</button>
-            </>
-        }>
-            <form id="conta-form" onSubmit={handleContaSubmit} className="space-y-4">
-                <div><label htmlFor="nome-conta" className="block text-sm font-medium text-gray-300 mb-1">Nome da Conta</label><input id="nome-conta" type="text" value={contaForm.nome} onChange={e => setContaForm({...contaForm, nome: e.target.value})} required className="w-full bg-gray-700 p-2 rounded" placeholder="Ex.: Conta Corrente Nubank"/></div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div><label htmlFor="data-inicial-conta" className="block text-sm font-medium text-gray-300 mb-1">Data Inicial da Conta</label><input id="data-inicial-conta" type="date" value={contaForm.data_inicial} onChange={e => setContaForm({...contaForm, data_inicial: e.target.value})} required className="w-full bg-gray-700 p-2 rounded" disabled={isSaldoInicialEditBlocked}/></div>
-                  <div><label htmlFor="saldo-conta" className="block text-sm font-medium text-gray-300 mb-1">Saldo Inicial</label><CurrencyInput id="saldo-conta" value={contaForm.saldo_inicial} onValueChange={v => setContaForm({...contaForm, saldo_inicial: v})} required className="w-full bg-gray-700 p-2 rounded" placeholder="R$ 0,00" disabled={isSaldoInicialEditBlocked}/></div>
-                </div>
-                {isSaldoInicialEditBlocked && <p className="text-xs text-yellow-400">Data e saldo inicial não podem ser editados pois a conta já possui outras transações.</p>}
-                <div className="flex items-center"><input type="checkbox" id="ativa-conta" checked={contaForm.ativo} onChange={e => setContaForm({...contaForm, ativo: e.target.checked})} className="h-4 w-4 rounded"/> <label htmlFor="ativa-conta" className="ml-2 text-sm text-gray-300">Ativa</label></div>
-            </form>
-        </Modal>
+      </div>
 
+      {/* Modals */}
+      <Modal isOpen={isContaModalOpen} onClose={closeModal} title={editingConta ? "Editar Conta" : "Nova Conta"}>
+        <form onSubmit={handleContaSubmit} className="space-y-4">
+            <div><label className="block text-sm font-medium text-gray-300 mb-1">Nome da Conta</label><input type="text" value={contaForm.nome} onChange={e => setContaForm({...contaForm, nome: e.target.value})} required className="w-full bg-gray-700 p-2 rounded"/></div>
+            <div className="grid grid-cols-2 gap-4">
+                <div><label className="block text-sm font-medium text-gray-300 mb-1">Saldo Inicial</label><CurrencyInput value={contaForm.saldo_inicial} onValueChange={v => setContaForm({...contaForm, saldo_inicial: v})} required className="w-full bg-gray-700 p-2 rounded" placeholder="R$ 0,00" disabled={isSaldoInicialEditBlocked} /></div>
+                <div><label className="block text-sm font-medium text-gray-300 mb-1">Data do Saldo</label><input type="date" value={contaForm.data_inicial} onChange={e => setContaForm({...contaForm, data_inicial: e.target.value})} required className="w-full bg-gray-700 p-2 rounded" disabled={isSaldoInicialEditBlocked}/></div>
+            </div>
+            {isSaldoInicialEditBlocked && <p className="text-xs text-yellow-400">O saldo inicial não pode ser editado pois a conta já possui transações.</p>}
+            <div className="flex items-center"><input type="checkbox" id="conta-ativa" checked={contaForm.ativo} onChange={e => setContaForm({...contaForm, ativo: e.target.checked})} className="h-4 w-4 rounded"/> <label htmlFor="conta-ativa" className="ml-2 text-sm text-gray-300">Conta Ativa</label></div>
+            <div className="pt-4 flex justify-end space-x-3"><button type="button" onClick={closeModal} className="bg-gray-600 px-4 py-2 rounded">Cancelar</button><button type="submit" className="bg-green-500 px-4 py-2 rounded">Salvar</button></div>
+        </form>
+      </Modal>
     </div>
   );
 };

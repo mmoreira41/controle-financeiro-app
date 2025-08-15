@@ -31,7 +31,7 @@ const FluxoCaixaPage: React.FC<FluxoCaixaPageProps> = ({ contas, transacoes, cat
       .filter(t => t.realizado && t.data < startDate && contasAtivasIds.has(t.conta_id))
       .forEach(t => {
         if (t.tipo === TipoCategoria.Entrada) saldoInicialPeriodo += t.valor;
-        else if (t.tipo === TipoCategoria.Saida) saldoInicialPeriodo -= t.valor;
+        else if (t.tipo === TipoCategoria.Saida || t.tipo === TipoCategoria.Investimento) saldoInicialPeriodo -= t.valor;
         else if (t.tipo === TipoCategoria.Transferencia) {
             if (t.meta_saldo_inicial) saldoInicialPeriodo += t.valor;
             else if (t.meta_pagamento) saldoInicialPeriodo -= t.valor;
@@ -54,7 +54,7 @@ const FluxoCaixaPage: React.FC<FluxoCaixaPageProps> = ({ contas, transacoes, cat
         
         if (t.tipo === TipoCategoria.Entrada) {
              dailyAggregates[t.data].entradas += t.valor;
-        } else if (t.tipo === TipoCategoria.Saida) {
+        } else if (t.tipo === TipoCategoria.Saida || t.tipo === TipoCategoria.Investimento) {
             dailyAggregates[t.data].saidas += t.valor;
         } else if (t.tipo === TipoCategoria.Transferencia && t.meta_pagamento) {
             dailyAggregates[t.data].pagamentos += t.valor;

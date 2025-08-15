@@ -1,5 +1,7 @@
 
 
+
+
 export enum TipoCategoria {
   Entrada = 'Entrada',
   Saida = 'Saida',
@@ -45,6 +47,7 @@ export interface Categoria {
   nome: string;
   tipo: TipoCategoria;
   sistema: boolean;
+  orcamento_mensal?: number | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -66,6 +69,9 @@ export interface TransacaoBanco {
   meta_pagamento?: boolean;
   // New field for initial balance transaction
   meta_saldo_inicial?: boolean;
+  // New field for recurring transactions
+  recorrencia?: 'diario' | 'semanal' | 'mensal' | 'anual' | null;
+  recorrencia_id?: string | null; // To group recurring transactions
   createdAt?: string;
   updatedAt?: string;
 }
@@ -93,14 +99,17 @@ export interface ParcelaCartao {
   updatedAt?: string;
 }
 
-export interface Kpi {
-  label: string;
-  value: string;
-  icon: React.ReactNode;
-  color: string;
+export interface Meta {
+    id: string;
+    nome: string;
+    valor_meta: number;
+    data_meta: string; // YYYY-MM-DD
+    categoria_id: string; // Associated investment category
+    createdAt?: string;
+    updatedAt?: string;
 }
 
-export type Page = 'contas-extrato' | 'cartoes' | 'fluxo' | 'resumo' | 'categorias';
+export type Page = 'contas-extrato' | 'cartoes' | 'fluxo' | 'resumo' | 'categorias' | 'metas' | 'configuracoes';
 
 export type ModalState = {
     modal: string | null;

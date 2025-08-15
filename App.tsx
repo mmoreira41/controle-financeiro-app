@@ -1,23 +1,38 @@
 
 
-
-
-
 import React, { useState, useMemo, useEffect } from 'react';
-import { Page, ContaBancaria, TransacaoBanco, Cartao, Categoria, CompraCartao, ParcelaCartao, TipoCategoria, BandeiraCartao, ModalState, NavigationState } from './types';
+import { AlertTriangle, Info } from 'lucide-react';
+
 import Sidebar from './components/Sidebar';
 import ContasExtratoPage from './pages/ContasExtratoPage';
 import CategoriasPage from './pages/CategoriasPage';
 import FluxoCaixaPage from './pages/FluxoCaixaPage';
 import CartoesPage from './pages/CartoesPage';
 import ResumoPage from './pages/ResumoPage';
-import { CATEGORIAS_PADRAO, CORES_CARTAO } from './constants';
+import MetasPage from './pages/MetasPage';
+import ConfiguracoesPage from './pages/ConfiguracoesPage';
 import Toast from './components/Toast';
 import ConfirmationModal, { ConfirmationModalData } from './components/ConfirmationModal';
 import GlobalFAB from './components/GlobalFAB';
-import { formatCurrency, computeFirstCompetency, addMonths, ymToISOFirstDay, splitInstallments, roundHalfUp } from './utils/format';
 import Modal from './components/Modal';
 import CurrencyInput from './components/CurrencyInput';
+
+import { Page, ContaBancaria, TransacaoBanco, Cartao, Categoria, CompraCartao, ParcelaCartao, TipoCategoria, ModalState, NavigationState, Meta } from './types';
+import { CATEGORIAS_PADRAO } from './constants';
+import { formatCurrency, computeFirstCompetency, addMonths, ymToISOFirstDay, splitInstallments, parseBrDate, parseCurrency, formatDate, calculateSaldo } from './utils/format';
+
+
+type CsvTransaction = { data: string; descricao: string; valor: number; originalLine: string };
+type CsvImportRow = CsvTransaction & {
+    selected: boolean;
+    isDuplicate: boolean;
+};
+type CsvImportState = {
+    transactions: CsvImportRow[];
+    fileName: string;
+    detectedInitialBalance?: { date: string; value: number };
+    detectedFinalBalance?: number;
+} | null;
 
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<Page>('resumo');
@@ -53,9 +68,13 @@ const App: React.FC = () => {
   const [categorias, setCategorias] = useState<Categoria[]>(CATEGORIAS_PADRAO);
   const [compras, setCompras] = useState<CompraCartao[]>([]);
   const [parcelas, setParcelas] = useState<ParcelaCartao[]>([]);
+  const [metas, setMetas] = useState<Meta[]>([]);
+  const [csvImportState, setCsvImportState] = useState<CsvImportState>(null);
+  const [csvDestinoConta, setCsvDestinoConta] = useState<string>('');
+  const [csvNewAccountName, setCsvNewAccountName] = useState('');
 
   // States for Global Modals
-  const [transacaoForm, setTransacaoForm] = useState({ data: getTodayString(), conta_id: '', categoria_id: '', valor: '', descricao: '', previsto: false });
+  const [transacaoForm, setTransacaoForm] = useState({ data: getTodayString(), conta_id: '', categoria_id: '', valor: '', descricao: '', previsto: false, recorrencia: null as TransacaoBanco['recorrencia'] });
   const [transferenciaForm, setTransferenciaForm] = useState({ data: getTodayString(), origem_id: '', destino_id: '', valor: '', descricao: '' });
   const [compraForm, setCompraForm] = useState({ data_compra: getTodayString(), valor_total: '', categoria_id: '', descricao: '', estorno: false, cartao_id: '', parcelas: 1 });
   const [editingCompra, setEditingCompra] = useState<CompraCartao | null>(null);
@@ -75,15 +94,15 @@ const App: React.FC = () => {
   };
 
   // Handlers Contas
-  const handleAddConta = (contaData: { nome: string; saldo_inicial: number; ativo: boolean; data_inicial: string; }) => {
+  const handleAddConta = (contaData: { nome: string; saldo_inicial: number; ativo: boolean; data_inicial: string; }): ContaBancaria | null => {
     if (contas.some(c => c.nome.toLowerCase() === contaData.nome.toLowerCase())) {
         showToast("Já existe uma conta com esse nome.", 'error');
-        return false;
+        return null;
     }
     const categoriaSaldoInicial = categorias.find(c => c.nome === "Saldo Inicial" && c.sistema);
     if (!categoriaSaldoInicial) {
         showToast("Categoria 'Saldo Inicial' de sistema não encontrada.", 'error');
-        return false;
+        return null;
     }
 
     const agora = new Date().toISOString();
@@ -115,7 +134,7 @@ const App: React.FC = () => {
     setContas(prev => [...prev, novaConta]);
     setTransacoes(prev => [...prev, transacaoSaldoInicial]);
     showToast("Conta criada com sucesso.");
-    return true;
+    return novaConta;
   };
 
   const handleUpdateConta = (contaAtualizada: Omit<ContaBancaria, 'saldo_inicial'>, novoSaldoInicial: number, novaDataInicial: string) => {
@@ -201,7 +220,7 @@ const App: React.FC = () => {
         });
         return;
       }
-      const dataToUpdate = { ...catOriginal, nome: catAtualizada.nome, updatedAt: new Date().toISOString() };
+      const dataToUpdate = { ...catOriginal, nome: catAtualizada.nome, tipo: catAtualizada.tipo, orcamento_mensal: catAtualizada.orcamento_mensal, updatedAt: new Date().toISOString() };
       setCategorias(prev => prev.map(c => (c.id === catAtualizada.id ? dataToUpdate : c)));
       showToast("Alterações salvas com sucesso.");
   };
@@ -652,7 +671,496 @@ const App: React.FC = () => {
             showToast(`Pagamento registrado. Restante: ${formatCurrency(novoRestante)}`);
         }
     };
+
+  // Handlers Metas
+    const handleAddMeta = (metaData: Omit<Meta, 'id' | 'categoria_id' | 'createdAt' | 'updatedAt'>) => {
+        const agora = new Date().toISOString();
+        const novaCategoriaInvestimento: Categoria = {
+            id: crypto.randomUUID(),
+            nome: `Meta: ${metaData.nome}`,
+            tipo: TipoCategoria.Investimento,
+            sistema: true, // Mark as system-managed category tied to a goal
+            createdAt: agora,
+            updatedAt: agora,
+        };
+        const novaMeta: Meta = {
+            ...metaData,
+            id: crypto.randomUUID(),
+            categoria_id: novaCategoriaInvestimento.id,
+            createdAt: agora,
+            updatedAt: agora,
+        };
+
+        setCategorias(prev => [...prev, novaCategoriaInvestimento]);
+        setMetas(prev => [...prev, novaMeta]);
+        showToast(`Meta "${metaData.nome}" criada com sucesso.`);
+    };
+
+    const handleUpdateMeta = (metaAtualizada: Meta) => {
+        setMetas(prev => prev.map(m => m.id === metaAtualizada.id ? { ...metaAtualizada, updatedAt: new Date().toISOString() } : m));
+        // Also update the associated category name if the goal name changed
+        const categoriaAssociada = categorias.find(c => c.id === metaAtualizada.categoria_id);
+        if (categoriaAssociada && categoriaAssociada.nome !== `Meta: ${metaAtualizada.nome}`) {
+            const categoriaAtualizada = { ...categoriaAssociada, nome: `Meta: ${metaAtualizada.nome}`, updatedAt: new Date().toISOString() };
+            setCategorias(prev => prev.map(c => c.id === categoriaAssociada.id ? categoriaAtualizada : c));
+        }
+        showToast("Meta atualizada com sucesso.");
+    };
+
+    const handleDeleteMeta = (metaId: string) => {
+        const meta = metas.find(m => m.id === metaId);
+        if (!meta) return;
+
+        const transacoesNaMeta = transacoes.some(t => t.categoria_id === meta.categoria_id);
+        if (transacoesNaMeta) {
+            setConfirmation({
+                title: "Exclusão Bloqueada",
+                message: `Não é possível excluir a meta "${meta.nome}" porque existem investimentos associados a ela. Exclua as transações de investimento primeiro.`,
+                buttons: [{ label: 'Entendi', onClick: () => setConfirmation(null), style: 'primary' }]
+            });
+            return;
+        }
+
+        setConfirmation({
+            title: "Confirmar Exclusão",
+            message: `Tem certeza que deseja excluir a meta "${meta.nome}"? A categoria de investimento associada também será removida.`,
+            buttons: [
+                { label: 'Cancelar', onClick: () => setConfirmation(null), style: 'secondary' },
+                {
+                    label: 'Excluir', onClick: () => {
+                        setMetas(prev => prev.filter(m => m.id !== metaId));
+                        setCategorias(prev => prev.filter(c => c.id !== meta.categoria_id));
+                        setConfirmation(null);
+                        showToast("Meta excluída com sucesso.");
+                    }, style: 'danger'
+                }
+            ]
+        });
+    };
+
+    const handleAdicionarDinheiroMeta = (metaId: string, contaId: string, valor: number, data: string): boolean => {
+        const meta = metas.find(m => m.id === metaId);
+        if (!meta) {
+            showToast("Meta não encontrada.", "error");
+            return false;
+        }
+
+        const contaOrigem = contas.find(c => c.id === contaId);
+        if (!contaOrigem) {
+            showToast("Conta de origem não encontrada.", "error");
+            return false;
+        }
+
+        const saldoAtual = calculateSaldo(contaId, transacoes);
+        if (saldoAtual < valor) {
+            setConfirmation({
+                title: "Saldo Insuficiente",
+                message: (
+                    <div className="text-left space-y-2">
+                        <p>A conta <strong className="text-white">"{contaOrigem.nome}"</strong> não possui saldo suficiente para este investimento.</p>
+                        <ul className="list-disc list-inside bg-gray-700/50 p-3 rounded-md text-sm">
+                            <li>Saldo Atual: <strong className="text-green-400">{formatCurrency(saldoAtual)}</strong></li>
+                            <li>Valor do Investimento: <strong className="text-red-400">{formatCurrency(valor)}</strong></li>
+                        </ul>
+                        <p>Para continuar, transfira o valor necessário ou escolha outra conta com saldo disponível.</p>
+                    </div>
+                ),
+                buttons: [{ label: 'Entendi', onClick: () => setConfirmation(null), style: 'primary' }]
+            });
+            return false;
+        }
     
+        const categoria = categorias.find(c => c.id === meta.categoria_id);
+        if (!categoria || categoria.tipo !== TipoCategoria.Investimento) {
+            showToast("Categoria de investimento da meta é inválida.", "error");
+            return false;
+        }
+        
+        const transacaoData = {
+            conta_id: contaId,
+            data,
+            valor,
+            categoria_id: meta.categoria_id,
+            descricao: `Investimento para meta: ${meta.nome}`,
+            previsto: false,
+            realizado: true,
+            tipo: categoria.tipo,
+        };
+        
+        const agora = new Date().toISOString();
+        const transacaoComId: TransacaoBanco = {
+            ...transacaoData,
+            id: crypto.randomUUID(),
+            createdAt: agora,
+            updatedAt: agora,
+        };
+        setTransacoes(prev => [...prev, transacaoComId]);
+        showToast(`Investimento para "${meta.nome}" registrado com sucesso.`);
+        return true;
+    };
+
+    // Handlers Configurações
+    const handleDeleteAllData = () => {
+        setConfirmation({
+            title: "APAGAR TODOS OS DADOS",
+            message: "Esta ação é irreversível e removerá todas as contas, cartões, transações, metas e configurações. Tem certeza absoluta?",
+            buttons: [
+                { label: 'Cancelar', onClick: () => setConfirmation(null), style: 'secondary' },
+                {
+                    label: 'Sim, apagar tudo', onClick: () => {
+                        setContas([]);
+                        setTransacoes([]);
+                        setCartoes([]);
+                        setCompras([]);
+                        setParcelas([]);
+                        setMetas([]);
+                        setCategorias(CATEGORIAS_PADRAO); // Reset to default
+                        setConfirmation(null);
+                        showToast("Todos os dados foram apagados.", "info");
+                        setCurrentPage('resumo');
+                    }, style: 'danger'
+                }
+            ]
+        });
+    };
+
+    const handleExportData = () => {
+        const data = {
+            contas,
+            transacoes,
+            cartoes,
+            compras,
+            parcelas,
+            metas,
+            categorias,
+        };
+        const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(data, null, 2))}`;
+        const link = document.createElement("a");
+        link.href = jsonString;
+        const date = new Date().toISOString().slice(0, 10);
+        link.download = `lovable-financas-backup-${date}.json`;
+        link.click();
+        showToast("Dados exportados com sucesso.");
+    };
+    
+    type InterParserResult = {
+        summary: {
+            account?: string;
+            period?: string;
+            finalBalance?: number;
+        };
+        transactions: CsvTransaction[];
+        warnings: string[];
+    }
+    
+    const parseBancoInterStatement = (content: string): InterParserResult => {
+        const lines = content.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    
+        if (!lines.slice(0, 5).some(l => l.replace(/^\uFEFF/, '').includes('Extrato Conta Corrente'))) {
+            throw new Error("Não é um extrato do Banco Inter (falta o marcador 'Extrato Conta Corrente').");
+        }
+    
+        const summary: InterParserResult['summary'] = {};
+        const headerLines = lines.slice(0, 10);
+        const accountMatch = headerLines.join('\n').match(/conta\s*;\s*(\d+)/i);
+        if (accountMatch) summary.account = accountMatch[1];
+        const periodMatch = headerLines.join('\n').match(/período\s*;\s*(.+)/i);
+        if (periodMatch) summary.period = periodMatch[1];
+        const balanceMatch = headerLines.join('\n').match(/saldo\s*;\s*([\d.,-]+)/i);
+        if (balanceMatch) summary.finalBalance = parseCurrency(balanceMatch[1]);
+        
+        const normalizeText = (text: string) => text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    
+        let headerRowIndex = -1;
+        let columns: string[] = [];
+        for (const [i, line] of lines.entries()) {
+            if (line.includes(';')) {
+                const normalizedLine = normalizeText(line);
+                const keywords = ['data lancamento', 'historico', 'descricao', 'valor', 'saldo'];
+                const keywordsFound = keywords.filter(k => normalizedLine.includes(k)).length;
+                if (keywordsFound >= 3) {
+                    headerRowIndex = i;
+                    columns = line.split(';').map(c => c.trim());
+                    break;
+                }
+            }
+        }
+    
+        if (headerRowIndex === -1) {
+            throw new Error("Cabeçalho de transações não encontrado.");
+        }
+    
+        const colPatterns = { date: ['data lancamento'], type: ['historico'], description: ['descricao'], amount: ['valor'], balance: ['saldo'] };
+        const colMap: { [key: string]: number } = {};
+        for (const [field, patterns] of Object.entries(colPatterns)) {
+            for (const [i, col] of columns.entries()) {
+                if (patterns.some(p => normalizeText(col).includes(p))) {
+                    colMap[field] = i;
+                    break;
+                }
+            }
+        }
+    
+        if (colMap.date === undefined || colMap.amount === undefined || colMap.balance === undefined) {
+            throw new Error(`Colunas obrigatórias não encontradas. Mapeado: ${Object.keys(colMap).join(', ')}`);
+        }
+    
+        const parsedTransactions: (CsvTransaction & { balance: number })[] = [];
+        const transactionLines = lines.slice(headerRowIndex + 1);
+        for (const line of transactionLines) {
+            const values = line.split(';');
+            if (values.length < columns.length) continue;
+    
+            const dataStr = values[colMap.date]?.trim();
+            const data = parseBrDate(dataStr);
+            if (!data) continue;
+    
+            const historico = values[colMap.type]?.trim().replace(/"/g, '') || '';
+            const descricaoRaw = values[colMap.description]?.trim().replace(/"/g, '').replace(/\s\s+/g, ' ') || '';
+            const descricao = [historico, descricaoRaw].filter(Boolean).join(': ').trim();
+            
+            const valor = parseCurrency(values[colMap.amount] || '0');
+            const balance = parseCurrency(values[colMap.balance] || '0');
+            
+            if (descricao && !isNaN(valor) && valor !== 0) {
+                parsedTransactions.push({ data, descricao, valor, balance, originalLine: line });
+            }
+        }
+    
+        const warnings: string[] = [];
+        for (let i = 0; i < parsedTransactions.length - 1; i++) {
+            const current = parsedTransactions[i];
+            const next = parsedTransactions[i + 1];
+            const expectedCurrentBalance = next.balance + current.valor;
+            if (Math.abs(expectedCurrentBalance - current.balance) > 0.015) {
+                warnings.push(`Inconsistência de saldo em ${formatDate(current.data)}`);
+            }
+        }
+        
+        const finalTransactions = parsedTransactions.map(({ balance, ...rest }) => rest).reverse();
+    
+        return { summary, transactions: finalTransactions, warnings };
+    }
+    
+    const handleImportData = (file: File) => {
+        const reader = new FileReader();
+        const fileName = file.name.toLowerCase();
+
+        reader.onload = (event) => {
+            try {
+                if (fileName.endsWith('.json')) {
+                    const importedData = JSON.parse(event.target?.result as string);
+                    if (importedData.contas && importedData.transacoes) {
+                        setConfirmation({
+                            title: "Confirmar Importação de Backup",
+                            message: "Isso substituirá todos os seus dados atuais pelos dados do arquivo de backup. Deseja continuar?",
+                            buttons: [
+                                { label: 'Cancelar', onClick: () => setConfirmation(null), style: 'secondary' },
+                                {
+                                    label: 'Importar e Substituir', onClick: () => {
+                                        setContas(importedData.contas || []);
+                                        setTransacoes(importedData.transacoes || []);
+                                        setCartoes(importedData.cartoes || []);
+                                        setCompras(importedData.compras || []);
+                                        setParcelas(importedData.parcelas || []);
+                                        setMetas(importedData.metas || []);
+                                        setCategorias(importedData.categorias || CATEGORIAS_PADRAO);
+                                        setConfirmation(null);
+                                        showToast("Dados importados com sucesso.", "success");
+                                        setCurrentPage('resumo');
+                                    }, style: 'primary'
+                                }
+                            ]
+                        });
+                    } else {
+                        showToast("Arquivo de backup (.json) inválido.", "error");
+                    }
+                } else if (fileName.endsWith('.csv')) {
+                    const content = event.target?.result as string;
+                    try {
+                        const { summary, transactions, warnings } = parseBancoInterStatement(content);
+                        if (transactions.length === 0) {
+                            showToast("Nenhuma transação válida encontrada no extrato do Banco Inter.", "error");
+                            return;
+                        }
+                        
+                        const initialImportRows: CsvImportRow[] = transactions.map(t => ({...t, selected: true, isDuplicate: false }));
+                        
+                        let detectedInitialBalance: { date: string; value: number } | undefined = undefined;
+                        if (summary.finalBalance !== undefined && transactions.length > 0) {
+                            const transactionsTotal = transactions.reduce((sum, t) => sum + t.valor, 0);
+                            const initialBalance = summary.finalBalance - transactionsTotal;
+                            const firstDate = transactions[0].data;
+                            detectedInitialBalance = { date: firstDate, value: initialBalance };
+                        }
+
+                        setCsvImportState({ transactions: initialImportRows, fileName: file.name, detectedFinalBalance: summary.finalBalance, detectedInitialBalance });
+                        
+                        if (warnings.length > 0) {
+                            showToast(`Importação com avisos: ${warnings.join('; ')}`, 'info');
+                        }
+                        
+                        const defaultConta = contas.find(c => c.ativo);
+                        setCsvDestinoConta(defaultConta?.id || '');
+                        setCsvNewAccountName('');
+
+                    } catch (interError: any) {
+                        console.warn("Falha ao analisar como Banco Inter, tentando parser genérico.", interError);
+                        // --- GENERIC PARSER (FALLBACK) ---
+                        const lines = content.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+                        const delimiter = lines.some(l => l.includes(';')) ? ';' : ',';
+                        let headerRowIndex = -1;
+                        let colIndices = { data: -1, historico: -1, descricao: -1, credito: -1, debito: -1, valor: -1 };
+                        const headerKeywords = {
+                            data: ['data'], historico: ['histórico', 'historico'], descricao: ['descricao', 'descrição'],
+                            credito: ['crédito', 'credito'], debito: ['débito', 'debito'], valor: ['valor']
+                        };
+                        
+                        for (let i = 0; i < lines.length; i++) {
+                            const headerCandidates = lines[i].toLowerCase().split(delimiter);
+                            const tempIndices = { data: -1, historico: -1, descricao: -1, credito: -1, debito: -1, valor: -1 };
+                            headerCandidates.forEach((h, index) => {
+                                const hTrimmed = h.trim().replace(/"/g, '');
+                                if (headerKeywords.data.some(k => hTrimmed.includes(k))) tempIndices.data = index;
+                                if (headerKeywords.historico.some(k => hTrimmed.includes(k))) tempIndices.historico = index;
+                                if (headerKeywords.descricao.some(k => hTrimmed.includes(k))) tempIndices.descricao = index;
+                                if (headerKeywords.credito.some(k => hTrimmed.includes(k))) tempIndices.credito = index;
+                                if (headerKeywords.debito.some(k => hTrimmed.includes(k))) tempIndices.debito = index;
+                                if (headerKeywords.valor.some(k => hTrimmed.includes(k))) tempIndices.valor = index;
+                            });
+                            if (tempIndices.data !== -1 && (tempIndices.descricao !== -1 || tempIndices.historico !== -1) && (tempIndices.valor !== -1 || (tempIndices.credito !== -1 && tempIndices.debito !== -1))) {
+                                headerRowIndex = i;
+                                colIndices = tempIndices;
+                                break;
+                            }
+                        }
+        
+                        if (headerRowIndex === -1) {
+                            showToast("Cabeçalho não encontrado no CSV. Verifique as colunas (Data, Histórico/Descrição, Valor/Crédito/Débito).", "error");
+                            return;
+                        }
+                        
+                        const parsedTransactions: CsvTransaction[] = [];
+                        for (const line of lines.slice(headerRowIndex + 1)) {
+                            const values = line.split(delimiter);
+                            if (values.length < 2) continue;
+                            const dataStr = values[colIndices.data]?.trim();
+                            const data = parseBrDate(dataStr);
+                            if (!data) continue;
+                            const historicoVal = colIndices.historico !== -1 ? (values[colIndices.historico] || '').trim().replace(/"/g, '') : '';
+                            const descricaoVal = colIndices.descricao !== -1 ? (values[colIndices.descricao] || '').trim().replace(/"/g, '') : '';
+                            const descricao = (historicoVal && descricaoVal) ? `${historicoVal}: ${descricaoVal}` : (historicoVal || descricaoVal);
+                            let valor = 0;
+                            if (colIndices.valor !== -1) valor = parseCurrency(values[colIndices.valor] || '0');
+                            else valor = parseCurrency(values[colIndices.credito] || '0') - parseCurrency(values[colIndices.debito] || '0');
+        
+                            if (descricao && !isNaN(valor) && valor !== 0) {
+                                parsedTransactions.push({ data, descricao, valor, originalLine: line });
+                            }
+                        }
+    
+                        if (parsedTransactions.length > 0) {
+                            const initialImportRows = parsedTransactions.reverse().map(t => ({...t, selected: true, isDuplicate: false}));
+                            setCsvImportState({ transactions: initialImportRows, fileName: file.name });
+                            const defaultConta = contas.find(c => c.ativo);
+                            setCsvDestinoConta(defaultConta?.id || '');
+                            setCsvNewAccountName('');
+                        } else {
+                            showToast("Nenhuma transação válida foi encontrada no arquivo CSV.", "error");
+                        }
+                    }
+                } else {
+                    showToast("Formato de arquivo não suportado. Use .json ou .csv.", "error");
+                }
+            } catch (error) {
+                showToast("Erro fatal ao ler o arquivo. Verifique o formato.", "error");
+            }
+        };
+        reader.readAsText(file, 'latin1'); // Use 'latin1' for better compatibility with Brazilian bank exports
+    };
+
+    const handleConfirmCsvImport = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!csvImportState || !csvDestinoConta) return;
+
+        const entradaCat = categorias.find(c => c.nome === 'Outras Entradas');
+        const saidaCat = categorias.find(c => c.nome === 'Outras Despesas');
+
+        if (!entradaCat || !saidaCat) {
+            showToast("Categorias padrão 'Outras Entradas' ou 'Outras Despesas' não encontradas.", "error");
+            return;
+        }
+
+        const agora = new Date().toISOString();
+        const novasTransacoes = csvImportState.transactions
+          .filter(t => t.selected)
+          .map(t => {
+            const isEntrada = t.valor >= 0;
+            return {
+                id: crypto.randomUUID(),
+                conta_id: csvDestinoConta,
+                data: t.data,
+                valor: Math.abs(t.valor),
+                categoria_id: isEntrada ? entradaCat.id : saidaCat.id,
+                tipo: isEntrada ? TipoCategoria.Entrada : TipoCategoria.Saida,
+                descricao: t.descricao,
+                previsto: false,
+                realizado: true,
+                createdAt: agora,
+                updatedAt: agora,
+            } as TransacaoBanco;
+        });
+
+        setTransacoes(prev => [...prev, ...novasTransacoes]);
+        setCsvImportState(null);
+        showToast(`${novasTransacoes.length} transações importadas com sucesso!`, "success");
+    };
+
+    const handleCreateAccountFromCsv = () => {
+        if (!csvNewAccountName.trim()) {
+            showToast("O nome da conta não pode estar vazio.", "error");
+            return;
+        }
+        
+        const dataMaisAntiga = csvImportState?.transactions.reduce((min, t) => t.data < min ? t.data : min, '9999-12-31');
+        
+        let saldoInicialValue = 0;
+        let dataInicialValue = dataMaisAntiga !== '9999-12-31' ? dataMaisAntiga : getTodayString();
+
+        if (csvImportState?.detectedInitialBalance) {
+            saldoInicialValue = csvImportState.detectedInitialBalance.value;
+            dataInicialValue = csvImportState.detectedInitialBalance.date;
+        }
+    
+        const novaConta = handleAddConta({
+            nome: csvNewAccountName,
+            saldo_inicial: saldoInicialValue,
+            ativo: true,
+            data_inicial: dataInicialValue,
+        });
+    
+        if (novaConta) {
+            setCsvNewAccountName('');
+            setCsvDestinoConta(novaConta.id); // Auto-select the new account
+        }
+    };
+    
+    const handleToggleCsvRow = (index: number) => {
+        if (!csvImportState) return;
+        const updated = [...csvImportState.transactions];
+        updated[index].selected = !updated[index].selected;
+        setCsvImportState({ ...csvImportState, transactions: updated });
+    };
+
+    const handleSelectAllCsv = (select: boolean) => {
+        if (!csvImportState) return;
+        const updated = csvImportState.transactions.map(t => ({
+            ...t,
+            selected: select ? !t.isDuplicate : false, // If selecting all, respect duplicates. If deselecting, deselect all.
+        }));
+        setCsvImportState({ ...csvImportState, transactions: updated });
+    };
+
     // Global Modal Effects
     useEffect(() => {
         if (isTransacaoModalOpen) {
@@ -666,6 +1174,7 @@ const App: React.FC = () => {
                     valor: String(transacao.valor * 100),
                     descricao: transacao.descricao,
                     previsto: transacao.previsto,
+                    recorrencia: transacao.recorrencia || null,
                 });
                 const isBlocked = transacao.meta_saldo_inicial && transacoes.some(tx => tx.conta_id === transacao.conta_id && !tx.meta_saldo_inicial);
                 setSaldoInicialEditBlocked(isBlocked);
@@ -679,6 +1188,7 @@ const App: React.FC = () => {
                     valor: '',
                     descricao: '',
                     previsto: false,
+                    recorrencia: null,
                 });
                 setSaldoInicialEditBlocked(false);
             }
@@ -742,6 +1252,33 @@ const App: React.FC = () => {
             }
         }
     }, [isTransferModalOpen, modalState.data, contas, transacoes]);
+
+    // CSV Duplicate Detection Effect
+    useEffect(() => {
+        if (!csvDestinoConta || !csvImportState) return;
+    
+        const transacoesDaConta = transacoes.filter(t => t.conta_id === csvDestinoConta);
+        // Create a Set for quick lookups. Key: 'YYYY-MM-DD_123.45'
+        const existingTransactions = new Set(
+            transacoesDaConta.map(t => `${t.data}_${t.valor.toFixed(2)}`)
+        );
+    
+        const updatedTransactions = csvImportState.transactions.map(t => {
+            const key = `${t.data}_${Math.abs(t.valor).toFixed(2)}`;
+            const isDuplicate = existingTransactions.has(key);
+            return {
+                ...t,
+                isDuplicate,
+                selected: !isDuplicate, // Auto-deselect potential duplicates
+            };
+        });
+    
+        // Avoid infinite loops by checking if the data actually changed
+        if (JSON.stringify(updatedTransactions) !== JSON.stringify(csvImportState.transactions)) {
+            setCsvImportState(prev => prev ? { ...prev, transactions: updatedTransactions } : null);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [csvDestinoConta, transacoes]); // Reruns when account changes or transactions are updated.
 
 
     // Global Modal Submit Handlers
@@ -892,8 +1429,31 @@ const App: React.FC = () => {
                   onMonthChange={setSelectedMonth} 
                 />;
       case 'categorias':
-        return <CategoriasPage categorias={categorias} transacoes={transacoes} compras={compras}
+        return <CategoriasPage 
+                    categorias={categorias} 
+                    transacoes={transacoes} 
+                    compras={compras}
+                    parcelas={parcelas}
+                    selectedMonth={selectedMonth}
+                    onMonthChange={setSelectedMonth}
                     addCategoria={handleAddCategoria} updateCategoria={handleUpdateCategoria} deleteCategoria={handleDeleteCategoria} {...{modalState, openModal, closeModal}} />;
+      case 'metas':
+        return <MetasPage 
+                    metas={metas}
+                    transacoes={transacoes}
+                    contas={contas}
+                    addMeta={handleAddMeta}
+                    updateMeta={handleUpdateMeta}
+                    deleteMeta={handleDeleteMeta}
+                    adicionarDinheiroMeta={handleAdicionarDinheiroMeta}
+                    {...{modalState, openModal, closeModal}}
+                />;
+       case 'configuracoes':
+        return <ConfiguracoesPage 
+                    handleDeleteAllData={handleDeleteAllData}
+                    handleExportData={handleExportData}
+                    handleImportData={handleImportData}
+                />;
       default:
         return <ResumoPage
                     contas={contas}
@@ -936,6 +1496,9 @@ const App: React.FC = () => {
     });
   };
 
+    const countSelectedCsv = csvImportState?.transactions.filter(t => t.selected).length || 0;
+    const areAllCsvSelected = csvImportState ? countSelectedCsv === csvImportState.transactions.filter(t => !t.isDuplicate).length : false;
+    
   return (
     <>
       <div className="flex h-screen w-full bg-gray-900 font-sans">
@@ -967,6 +1530,20 @@ const App: React.FC = () => {
                 <div><label htmlFor="valor-transacao" className="block text-sm font-medium text-gray-300 mb-1">Valor</label><CurrencyInput id="valor-transacao" value={transacaoForm.valor} onValueChange={v => setTransacaoForm({...transacaoForm, valor: v})} required className="w-full bg-gray-700 p-2 rounded" placeholder="R$ 0,00" disabled={!!editingTransacao?.meta_saldo_inicial && isSaldoInicialEditBlocked}/></div>
                 <div><label htmlFor="desc-transacao" className="block text-sm font-medium text-gray-300 mb-1">Descrição</label><input id="desc-transacao" type="text" value={transacaoForm.descricao} onChange={e => setTransacaoForm({...transacaoForm, descricao: e.target.value})} className="w-full bg-gray-700 p-2 rounded" placeholder="Ex.: Compra supermercado"/></div>
                 <div className="flex items-center"><input type="checkbox" id="previsto-transacao" checked={transacaoForm.previsto} onChange={e => setTransacaoForm({...transacaoForm, previsto: e.target.checked})} className="h-4 w-4 rounded" disabled={!!editingTransacao?.meta_saldo_inicial}/> <label htmlFor="previsto-transacao" className="ml-2 text-sm text-gray-300">Previsto?</label></div>
+                <div>
+                  <div className="flex items-center"><input type="checkbox" id="recorrente-transacao" checked={!!transacaoForm.recorrencia} onChange={e => setTransacaoForm({...transacaoForm, recorrencia: e.target.checked ? 'mensal' : null})} className="h-4 w-4 rounded"/> <label htmlFor="recorrente-transacao" className="ml-2 text-sm text-gray-300">Lançamento Recorrente</label></div>
+                  {transacaoForm.recorrencia && (
+                    <div className="mt-2 pl-6">
+                      <label htmlFor="frequencia-transacao" className="block text-sm font-medium text-gray-300 mb-1">Frequência</label>
+                      <select id="frequencia-transacao" value={transacaoForm.recorrencia} onChange={e => setTransacaoForm({...transacaoForm, recorrencia: e.target.value as TransacaoBanco['recorrencia']})} className="w-full bg-gray-700 p-2 rounded">
+                        <option value="diario">Diário</option>
+                        <option value="semanal">Semanal</option>
+                        <option value="mensal">Mensal</option>
+                        <option value="anual">Anual</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
             </form>
         </Modal>
 
@@ -1042,6 +1619,93 @@ const App: React.FC = () => {
               </div>
           </form>
       </Modal>
+
+        <Modal
+            isOpen={!!csvImportState}
+            onClose={() => setCsvImportState(null)}
+            title={`Importar de "${csvImportState?.fileName}"`}
+            footer={
+                <>
+                    <button onClick={() => setCsvImportState(null)} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg">Cancelar</button>
+                    <button type="submit" form="csv-import-form" className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg" disabled={!csvDestinoConta || countSelectedCsv === 0}>
+                        Importar {countSelectedCsv} Transações
+                    </button>
+                </>
+            }
+        >
+            <form id="csv-import-form" onSubmit={handleConfirmCsvImport}>
+                <div className="space-y-4">
+                    <div>
+                        <label htmlFor="csv-conta-destino" className="block text-sm font-medium text-gray-300 mb-1">1. Para qual conta deseja importar?</label>
+                        <select id="csv-conta-destino" value={csvDestinoConta} onChange={e => setCsvDestinoConta(e.target.value)} required className="w-full bg-gray-700 p-2 rounded">
+                            <option value="" disabled>Selecione...</option>
+                            {contas.filter(c => c.ativo).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                        </select>
+                    </div>
+                    
+                    <div className="text-center text-sm text-gray-400">ou</div>
+                    
+                    <div>
+                        <label htmlFor="csv-nova-conta" className="block text-sm font-medium text-gray-300 mb-1">Crie uma nova conta para este extrato:</label>
+                        <div className="flex space-x-2">
+                            <input id="csv-nova-conta" type="text" placeholder="Nome do Banco (Conta)" value={csvNewAccountName} onChange={e => setCsvNewAccountName(e.target.value)} className="w-full bg-gray-700 p-2 rounded" />
+                            <button type="button" onClick={handleCreateAccountFromCsv} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg whitespace-nowrap">Criar</button>
+                        </div>
+                        {csvImportState?.detectedFinalBalance !== undefined && (
+                            <div className="mt-2 text-xs p-2 bg-blue-900/50 rounded-md flex items-center space-x-2 text-blue-300">
+                                <Info size={14}/>
+                                <span>Saldo final detectado: <strong>{formatCurrency(csvImportState.detectedFinalBalance)}</strong>. O saldo inicial será calculado automaticamente.</span>
+                            </div>
+                        )}
+                        {csvImportState?.detectedInitialBalance && !csvImportState?.detectedFinalBalance && (
+                            <div className="mt-2 text-xs p-2 bg-green-900/50 rounded-md flex items-center space-x-2 text-green-300">
+                                <Info size={14}/>
+                                <span>Saldo inicial detectado: <strong>{formatCurrency(csvImportState.detectedInitialBalance.value)}</strong> em {formatDate(csvImportState.detectedInitialBalance.date)}</span>
+                            </div>
+                        )}
+                    </div>
+                    
+                    <hr className="border-gray-600" />
+                    
+                    <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">2. Selecione as transações para importar:</label>
+                        <div className="max-h-60 overflow-y-auto bg-gray-900/50 p-2 rounded-lg border border-gray-700">
+                            <table className="w-full text-xs">
+                                <thead>
+                                    <tr className="text-left text-gray-300">
+                                        <th className="p-2 w-10">
+                                            <input type="checkbox" checked={areAllCsvSelected} onChange={e => handleSelectAllCsv(e.target.checked)} title="Marcar/Desmarcar todos" />
+                                        </th>
+                                        <th className="p-1">Data</th>
+                                        <th className="p-1">Descrição</th>
+                                        <th className="p-1 text-right">Valor</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {csvImportState?.transactions.map((t, i) => (
+                                        <tr key={i} className={`border-t border-gray-700 ${t.isDuplicate ? 'bg-yellow-900/40 text-gray-500' : ''}`}>
+                                            <td className="p-2"><input type="checkbox" checked={t.selected} onChange={() => handleToggleCsvRow(i)} /></td>
+                                            <td className="p-1 whitespace-nowrap">{formatDate(t.data)}</td>
+                                            <td className="p-1">
+                                                <div className="flex items-center space-x-2">
+                                                    {t.isDuplicate && (
+                                                        <span title="Possível duplicata">
+                                                            <AlertTriangle size={12} className="text-yellow-400 flex-shrink-0" />
+                                                        </span>
+                                                    )}
+                                                    <span className="truncate">{t.descricao}</span>
+                                                </div>
+                                            </td>
+                                            <td className={`p-1 text-right font-mono ${t.valor >= 0 ? 'text-green-400' : 'text-red-400'}`}>{formatCurrency(t.valor)}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </Modal>
 
     </>
   );

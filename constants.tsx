@@ -1,7 +1,7 @@
 
 import React from 'react';
+import { CreditCard, Landmark, Waves, BarChartBig, Shapes, HelpCircle, Target, Settings } from 'lucide-react';
 import { TipoCategoria, Categoria, Page } from './types';
-import { Landmark, CreditCard, Waves, BarChartBig, Shapes, HelpCircle } from 'lucide-react';
 
 export const CATEGORIAS_PADRAO: Categoria[] = [
   // Entradas
@@ -48,7 +48,9 @@ export const NAV_ITEMS: { id: Page; label: string; icon: React.ReactNode }[] = [
     { id: 'contas-extrato', label: 'Contas e Extrato', icon: <Landmark size={20} /> },
     { id: 'cartoes', label: 'Cartões', icon: <CreditCard size={20} /> },
     { id: 'fluxo', label: 'Fluxo de Caixa', icon: <Waves size={20} /> },
-    { id: 'categorias', label: 'Categorias', icon: <Shapes size={20} /> },
+    { id: 'categorias', label: 'Categorias e Orçamentos', icon: <Shapes size={20} /> },
+    { id: 'metas', label: 'Metas', icon: <Target size={20} /> },
+    { id: 'configuracoes', label: 'Configurações', icon: <Settings size={20} /> },
 ];
 
 export const UNKNOWN_CATEGORY: Categoria = {

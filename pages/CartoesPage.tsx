@@ -1,11 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Cartao, CompraCartao, ParcelaCartao, ContaBancaria, Categoria, TipoCategoria, BandeiraCartao, TransacaoBanco } from '../types';
+import { Cartao, CompraCartao, ParcelaCartao, ContaBancaria, Categoria, TipoCategoria, BandeiraCartao, TransacaoBanco, ModalState } from '../types';
 import Modal from '../components/Modal';
 import CurrencyInput from '../components/CurrencyInput';
 import { formatCurrency, formatDate } from '../utils/format';
 import { Plus, Pencil, Trash2, CreditCard, ShoppingCart, DollarSign, ChevronDown, ChevronUp, RefreshCcw, Wallet } from 'lucide-react';
 import { CORES_CARTAO } from '../constants';
-import { ModalState } from '../App';
 import DatePeriodSelector from '../components/DatePeriodSelector';
 
 interface CartoesPageProps {

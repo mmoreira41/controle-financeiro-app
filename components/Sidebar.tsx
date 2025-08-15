@@ -1,8 +1,8 @@
 
 import React from 'react';
+import { DollarSign } from 'lucide-react';
 import { NAV_ITEMS } from '../constants';
 import { Page } from '../types';
-import { DollarSign, Settings } from 'lucide-react';
 
 interface SidebarProps {
   currentPage: Page;
@@ -10,6 +10,9 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
+  const mainNavItems = NAV_ITEMS.filter(item => item.id !== 'configuracoes');
+  const settingsNavItem = NAV_ITEMS.find(item => item.id === 'configuracoes');
+
   return (
     <div className="w-64 bg-gray-800/50 backdrop-blur-sm border-r border-gray-700/50 flex flex-col p-4 fixed h-full">
       <div className="flex items-center space-x-2 mb-8">
@@ -18,7 +21,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
       </div>
       <nav className="flex-grow">
         <ul>
-          {NAV_ITEMS.map((item) => (
+          {mainNavItems.map((item) => (
             <li key={item.id} className="mb-2">
               <a
                 href="#"
@@ -39,12 +42,25 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
           ))}
         </ul>
       </nav>
-      <div>
-        <a href="#" className="flex items-center space-x-3 p-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white">
-          <Settings size={20} />
-          <span>Configurações</span>
-        </a>
-      </div>
+      {settingsNavItem && (
+        <div>
+          <a 
+            href="#" 
+            onClick={(e) => {
+              e.preventDefault();
+              setCurrentPage(settingsNavItem.id);
+            }}
+            className={`flex items-center space-x-3 p-2 rounded-md text-sm font-medium transition-colors ${
+              currentPage === settingsNavItem.id
+                ? 'bg-green-500 text-white'
+                : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+            }`}
+          >
+            {settingsNavItem.icon}
+            <span>{settingsNavItem.label}</span>
+          </a>
+        </div>
+      )}
     </div>
   );
 };
