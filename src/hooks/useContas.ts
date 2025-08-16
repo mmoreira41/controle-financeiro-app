@@ -103,68 +103,32 @@ export const useContas = (): UseContasReturn => {
 
       // Se há saldo inicial, criar transação de saldo inicial
       if (contaData.saldo_inicial > 0) {
-        // Buscar categoria de transferência do sistema
-        const { data: categoriaTransferencia, error: catError } = await supabase
-          .from('categoria')
-          .select('id')
-          .eq('user_id', user.id)
-          .eq('tipo', 'Transferencia')
-          .eq('sistema', true)
-          .limit(1)
-          .maybeSingle()
-
-        if (catError) {
-          console.warn('Erro ao buscar categoria de transferência:', catError.message)
-        }
-
-        let categoriaId = categoriaTransferencia?.id
-
-        // Se não existe categoria de transferência, criar uma
-        if (!categoriaId) {
-          const { data: novaCategoria, error: novaCatError } = await supabase
-            .from('categoria')
-            .insert([{
-              user_id: user.id,
-              nome: 'Saldo Inicial',
-              tipo: 'Transferencia',
-              sistema: true,
-              orcamento_mensal: null
-            }])
-            .select('id')
-            .single()
-
-          if (novaCatError) {
-            console.warn('Erro ao criar categoria de transferência:', novaCatError.message)
-          } else {
-            categoriaId = novaCategoria?.id
-          }
-        }
+        // Usar a categoria "Saldo Inicial" padrão (ID baseado no user_id)
+        const categoriaId = `${user.id}-cat-sistema-002` // ID da categoria "Saldo Inicial"
 
         // Criar transação de saldo inicial
-        if (categoriaId) {
-          const { error: transacaoError } = await supabase
-            .from('transacao_banco')
-            .insert([{
-              user_id: user.id,
-              conta_id: data.id,
-              data: contaData.data_inicial,
-              valor: contaData.saldo_inicial,
-              categoria_id: categoriaId,
-              tipo: 'Transferencia',
-              descricao: 'Saldo inicial da conta',
-              transferencia_par_id: null,
-              previsto: false,
-              realizado: true,
-              recorrencia: null,
-              meta_saldo_inicial: true,
-              meta_pagamento: false,
-              cartao_id: null,
-              competencia_fatura: null
-            }])
+        const { error: transacaoError } = await supabase
+          .from('transacao_banco')
+          .insert([{
+            user_id: user.id,
+            conta_id: data.id,
+            data: contaData.data_inicial,
+            valor: contaData.saldo_inicial,
+            categoria_id: categoriaId,
+            tipo: 'Transferencia',
+            descricao: 'Saldo inicial da conta',
+            transferencia_par_id: null,
+            previsto: false,
+            realizado: true,
+            recorrencia: null,
+            meta_saldo_inicial: true,
+            meta_pagamento: false,
+            cartao_id: null,
+            competencia_fatura: null
+          }])
 
-          if (transacaoError) {
-            console.warn('Erro ao criar transação de saldo inicial:', transacaoError.message)
-          }
+        if (transacaoError) {
+          console.warn('Erro ao criar transação de saldo inicial:', transacaoError.message)
         }
       }
 
