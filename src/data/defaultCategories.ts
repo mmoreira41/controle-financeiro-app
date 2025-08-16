@@ -54,26 +54,31 @@ export const GLOBAL_CATEGORIES: GlobalCategory[] = [
 
 // Function to ensure global categories exist in database
 export const ensureGlobalCategoriesExist = async (): Promise<void> => {
+  console.log('🔧 Verificando se categorias globais existem...')
+  
   try {
     // Check if global categories already exist
     const { data: existingGlobalCategories, error: checkError } = await supabase
       .from('categoria')
-      .select('id')
+      .select('id, nome')
       .is('user_id', null)
-      .limit(1)
+      .limit(5)
 
     if (checkError) {
-      console.warn('Error checking global categories:', checkError.message)
+      console.warn('❌ Erro ao verificar categorias globais:', checkError.message)
       return
     }
+
+    console.log(`📊 Encontradas ${existingGlobalCategories?.length || 0} categorias globais existentes`)
 
     // If global categories already exist, don't insert again
     if (existingGlobalCategories && existingGlobalCategories.length > 0) {
-      console.log('✅ Global categories already exist')
+      console.log('✅ Categorias globais já existem:', existingGlobalCategories.map(c => c.nome))
       return
     }
 
-    console.log('🔄 Inserting global categories...')
+    console.log(`🔄 Inserindo ${GLOBAL_CATEGORIES.length} categorias globais...`)
+    console.log('📝 Categorias a inserir:', GLOBAL_CATEGORIES.slice(0, 3).map(c => c.nome), '...')
 
     // Insert all global categories
     const { error: insertError } = await supabase
@@ -81,12 +86,14 @@ export const ensureGlobalCategoriesExist = async (): Promise<void> => {
       .insert(GLOBAL_CATEGORIES)
 
     if (insertError) {
-      console.error('Error inserting global categories:', insertError.message)
+      console.error('❌ Erro ao inserir categorias globais:', insertError.message)
+      console.error('Detalhes do erro:', insertError)
     } else {
-      console.log(`✅ ${GLOBAL_CATEGORIES.length} global categories inserted successfully!`)
+      console.log(`✅ ${GLOBAL_CATEGORIES.length} categorias globais inseridas com sucesso!`)
+      console.log('🎉 Categorias disponíveis para todos os usuários!')
     }
   } catch (err) {
-    console.error('Unexpected error ensuring global categories:', err)
+    console.error('💥 Erro inesperado ao garantir categorias globais:', err)
   }
 }
 

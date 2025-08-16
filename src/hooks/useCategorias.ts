@@ -226,6 +226,14 @@ export const useCategorias = (): UseCategoriasReturn => {
     await fetchCategorias()
   }
 
+  // Garantir categorias globais na inicialização
+  useEffect(() => {
+    const initializeGlobalCategories = async () => {
+      await ensureGlobalCategoriesExist()
+    }
+    initializeGlobalCategories()
+  }, []) // Roda apenas uma vez na inicialização
+
   // Carregar categorias quando usuário mudar
   useEffect(() => {
     fetchCategorias()
