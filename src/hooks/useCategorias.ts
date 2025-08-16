@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { ensureGlobalCategoriesExist } from '../data/defaultCategories'
 import { insertGlobalCategoriesDirectly } from '../utils/insertGlobalCategories'
+import { runCategoryDiagnostics } from '../utils/diagnosticCategories'
 
 export type TipoCategoria = 'Entrada' | 'Saida' | 'Investimento' | 'Transferencia' | 'Estorno'
 
@@ -231,9 +232,14 @@ export const useCategorias = (): UseCategoriasReturn => {
   useEffect(() => {
     const initializeGlobalCategories = async () => {
       console.log('🔥 INICIALIZANDO CATEGORIAS GLOBAIS...')
-      // Tentar ambos os métodos para garantir inserção
+      
+      // Primeiro executar diagnóstico completo
+      await runCategoryDiagnostics()
+      
+      // Depois tentar ambos os métodos para garantir inserção
       await ensureGlobalCategoriesExist()
       await insertGlobalCategoriesDirectly()
+      
       console.log('✅ INICIALIZAÇÃO DE CATEGORIAS CONCLUÍDA')
     }
     initializeGlobalCategories()
