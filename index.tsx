@@ -1,7 +1,7 @@
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import App from './App';
+import AppWithAuth from './AppWithAuth';
 import 'lucide-react'; // Ensures lucide icons are available
 
 const rootElement = document.getElementById('root');
@@ -12,6 +12,6 @@ if (!rootElement) {
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
-    <App />
+    <AppWithAuth />
   </React.StrictMode>
 );

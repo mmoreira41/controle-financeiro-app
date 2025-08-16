@@ -1,15 +1,17 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Page } from '../types';
-import { User, Pencil, Calendar, Search, Menu, Camera, Trash2 } from 'lucide-react';
+import { User, Pencil, Calendar, Search, Menu, Camera, Trash2, LogOut } from 'lucide-react';
 
 interface HeaderProps {
   setCurrentPage: (page: Page) => void;
   profilePicture: string | null;
   onImageSelect: (imageSrc: string) => void;
   onImageRemove: () => void;
+  onLogout?: () => void;
+  user?: { email?: string; name?: string } | null;
 }
 
-const Header: React.FC<HeaderProps> = ({ setCurrentPage, profilePicture, onImageSelect, onImageRemove }) => {
+const Header: React.FC<HeaderProps> = ({ setCurrentPage, profilePicture, onImageSelect, onImageRemove, onLogout, user }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isCalcMenuOpen, setIsCalcMenuOpen] = useState(false);
   const calcMenuRef = useRef<HTMLDivElement>(null);
@@ -147,6 +149,18 @@ const Header: React.FC<HeaderProps> = ({ setCurrentPage, profilePicture, onImage
                     </div>
                 )}
             </div>
+            
+            {/* Botão de Logout */}
+            {onLogout && (
+                <button 
+                    onClick={onLogout}
+                    className="p-2 rounded-full hover:bg-red-700/50 text-gray-400 hover:text-red-400 transition-colors" 
+                    aria-label="Sair da Conta"
+                    title="Sair da Conta"
+                >
+                    <LogOut size={20} />
+                </button>
+            )}
         </div>
       </div>
     </header>
