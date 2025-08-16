@@ -25,7 +25,7 @@ const AppSupabase: React.FC = () => {
   const { user, signOut } = useAuth();
   const { contas, loading: contasLoading, addConta, updateConta, deleteConta } = useContas();
   const { transacoes, loading: transacoesLoading, addTransacao, updateTransacao, deleteTransacao } = useTransacoes();
-  const { categorias, loading: categoriasLoading } = useCategorias();
+  const { categorias, loading: categoriasLoading, addCategoria: addCategoriaHook, updateCategoria: updateCategoriaHook, deleteCategoria: deleteCategoriaHook } = useCategorias();
 
   const [currentPage, setCurrentPage] = useState<Page>('resumo');
   const [selectedViewId, setSelectedViewId] = useState<'all' | string>('all');
@@ -110,9 +110,7 @@ const AppSupabase: React.FC = () => {
     await deleteConta(id);
   };
 
-  // Funções de categorias funcionais usando hooks
-  const { addCategoria: addCategoriaHook, updateCategoria: updateCategoriaHook, deleteCategoria: deleteCategoriaHook } = useCategorias();
-
+  // Funções de categorias funcionais
   const addCategoria = async (categoria: any) => {
     try {
       const novaCategoria = await addCategoriaHook(categoria);
