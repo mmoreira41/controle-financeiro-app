@@ -9,11 +9,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "react-dom": "^19.1.1",
-    "react": "^19.1.1",
+    "@supabase/supabase-js": "^2.55.0",
     "lucide-react": "^0.539.0",
-    "recharts": "^2.12.7",
-    "react-image-crop": "11.0.6"
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "react-image-crop": "11.0.6",
+    "recharts": "^2.12.7"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
