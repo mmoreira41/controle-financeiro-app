@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
-import { DEFAULT_CATEGORIES } from '../data/defaultCategories'
+import { ensureGlobalCategoriesExist } from '../data/defaultCategories'
 
 export type TipoCategoria = 'Entrada' | 'Saida' | 'Investimento' | 'Transferencia' | 'Estorno'
 
@@ -40,73 +40,29 @@ export const useCategorias = (): UseCategoriasReturn => {
 
   const clearError = () => setError(null)
 
-  // Inicializar categorias padrão se não existirem
-  const initializeDefaultCategories = async () => {
-    if (!user) return
-
-    try {
-      // Verificar se o usuário já tem categorias
-      const { data: existingCategories, error: checkError } = await supabase
-        .from('categoria')
-        .select('id')
-        .eq('user_id', user.id)
-        .limit(1)
-
-      if (checkError) {
-        console.warn('Erro ao verificar categorias existentes:', checkError.message)
-        return
-      }
-
-      // Se já tem categorias, não precisa inicializar
-      if (existingCategories && existingCategories.length > 0) {
-        return
-      }
-
-      console.log('Inicializando categorias padrão para o usuário...')
-
-      // Inserir todas as categorias padrão
-      const categoriasParaInserir = DEFAULT_CATEGORIES.map(cat => ({
-        id: `${user.id}-${cat.id}`, // ID único global baseado no user_id
-        user_id: user.id,
-        nome: cat.nome,
-        tipo: cat.tipo,
-        sistema: cat.sistema,
-        orcamento_mensal: cat.orcamento_mensal
-      }))
-
-      const { error: insertError } = await supabase
-        .from('categoria')
-        .insert(categoriasParaInserir)
-
-      if (insertError) {
-        console.error('Erro ao inserir categorias padrão:', insertError.message)
-      } else {
-        console.log(`✅ ${categoriasParaInserir.length} categorias padrão inseridas com sucesso!`)
-      }
-    } catch (err) {
-      console.error('Erro inesperado ao inicializar categorias:', err)
-    }
-  }
-
-  // Buscar categorias do usuário
+  // Buscar categorias (globais + do usuário)
   const fetchCategorias = async () => {
-    if (!user) {
-      setCategorias([])
-      setLoading(false)
-      return
-    }
-
     try {
       setLoading(true)
       clearError()
 
-      // Primeiro, inicializar categorias padrão se necessário
-      await initializeDefaultCategories()
+      // Garantir que categorias globais existam no banco
+      await ensureGlobalCategoriesExist()
 
-      const { data, error: fetchError } = await supabase
+      // Buscar categorias globais (user_id = NULL) + categorias do usuário específico
+      let query = supabase
         .from('categoria')
         .select('*')
-        .eq('user_id', user.id)
+
+      if (user) {
+        // Se usuário logado: buscar globais + suas categorias
+        query = query.or(`user_id.is.null,user_id.eq.${user.id}`)
+      } else {
+        // Se não logado: apenas globais
+        query = query.is('user_id', null)
+      }
+
+      const { data, error: fetchError } = await query
         .order('sistema', { ascending: false }) // Sistema primeiro
         .order('nome', { ascending: true })
 
@@ -115,6 +71,7 @@ export const useCategorias = (): UseCategoriasReturn => {
         return
       }
 
+      console.log(`✅ Carregadas ${data?.length || 0} categorias (globais + usuário)`)
       setCategorias(data || [])
     } catch (err) {
       setErrorMessage(`Erro inesperado: ${err instanceof Error ? err.message : 'Erro desconhecido'}`)

@@ -103,8 +103,8 @@ export const useContas = (): UseContasReturn => {
 
       // Se há saldo inicial, criar transação de saldo inicial
       if (contaData.saldo_inicial > 0) {
-        // Usar a categoria "Saldo Inicial" padrão (ID baseado no user_id)
-        const categoriaId = `${user.id}-cat-sistema-002` // ID da categoria "Saldo Inicial"
+        // Usar a categoria "Saldo Inicial" global
+        const categoriaId = 'global-cat-sistema-002' // ID da categoria "Saldo Inicial" global
 
         // Criar transação de saldo inicial
         const { error: transacaoError } = await supabase

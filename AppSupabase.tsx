@@ -110,17 +110,46 @@ const AppSupabase: React.FC = () => {
     await deleteConta(id);
   };
 
-  // Funções de compatibilidade (implementar depois)
+  // Funções de categorias funcionais usando hooks
+  const { addCategoria: addCategoriaHook, updateCategoria: updateCategoriaHook, deleteCategoria: deleteCategoriaHook } = useCategorias();
+
   const addCategoria = async (categoria: any) => {
-    console.log('addCategoria:', categoria);
+    try {
+      const novaCategoria = await addCategoriaHook(categoria);
+      if (novaCategoria) {
+        showToast('Categoria criada com sucesso!', 'success');
+      } else {
+        showToast('Erro ao criar categoria', 'error');
+      }
+    } catch (error) {
+      showToast('Erro ao criar categoria', 'error');
+    }
   };
 
   const updateCategoria = async (categoria: any) => {
-    console.log('updateCategoria:', categoria);
+    try {
+      const success = await updateCategoriaHook(categoria.id, categoria);
+      if (success) {
+        showToast('Categoria atualizada com sucesso!', 'success');
+      } else {
+        showToast('Erro ao atualizar categoria', 'error');
+      }
+    } catch (error) {
+      showToast('Erro ao atualizar categoria', 'error');
+    }
   };
 
   const deleteCategoria = async (id: string) => {
-    console.log('deleteCategoria:', id);
+    try {
+      const success = await deleteCategoriaHook(id);
+      if (success) {
+        showToast('Categoria excluída com sucesso!', 'success');
+      } else {
+        showToast('Erro ao excluir categoria', 'error');
+      }
+    } catch (error) {
+      showToast('Erro ao excluir categoria', 'error');
+    }
   };
 
   const deleteTransacoes = async (ids: string[]) => {
