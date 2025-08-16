@@ -21,6 +21,7 @@ export interface ContaBancaria {
   saldo_inicial: number; // Will be deprecated in logic, but kept for migration/structure
   data_inicial: string; // YYYY-MM-DD
   ativo: boolean;
+  cor?: string; // hex color
   createdAt?: string;
   updatedAt?: string;
 }
@@ -117,3 +118,7 @@ export type NavigationState = {
     month?: string;
     filters?: any;
 };
+
+export interface Settings {
+    showPercentageChange: boolean;
+}

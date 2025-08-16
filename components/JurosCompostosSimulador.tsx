@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import CurrencyInput from './CurrencyInput';
 import { formatCurrency } from '../utils/format';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
+import { ChevronDown } from 'lucide-react';
 
 const JurosCompostosSimulador: React.FC = () => {
     const [valorInicial, setValorInicial] = useState('');
@@ -83,34 +84,40 @@ const JurosCompostosSimulador: React.FC = () => {
                 <div className="space-y-4 bg-gray-900/50 p-6 rounded-lg">
                     <div>
                         <label htmlFor="valor-inicial" className="block text-sm font-medium text-gray-300 mb-1">Valor Inicial (R$)</label>
-                        <CurrencyInput id="valor-inicial" value={valorInicial} onValueChange={setValorInicial} placeholder="R$ 0,00" className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-red-500"/>
+                        <CurrencyInput id="valor-inicial" value={valorInicial} onValueChange={setValorInicial} placeholder="R$ 0,00" className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-green-500"/>
                     </div>
                     <div>
                         <label htmlFor="valor-mensal" className="block text-sm font-medium text-gray-300 mb-1">Valor Mensal (R$)</label>
-                        <CurrencyInput id="valor-mensal" value={valorMensal} onValueChange={setValorMensal} placeholder="R$ 0,00" className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-red-500"/>
+                        <CurrencyInput id="valor-mensal" value={valorMensal} onValueChange={setValorMensal} placeholder="R$ 0,00" className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-green-500"/>
                     </div>
                     <div>
                         <label htmlFor="taxa-juros" className="block text-sm font-medium text-gray-300 mb-1">Taxa de Juros</label>
                         <div className="flex">
-                            <input id="taxa-juros" type="number" value={taxaJuros} onChange={e => setTaxaJuros(e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-l-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-red-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" placeholder="Ex: 8.5" />
-                            <select value={tipoTaxa} onChange={e => setTipoTaxa(e.target.value as any)} className="bg-gray-600 border border-gray-600 rounded-r-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-red-500">
-                                <option value="anual">anual</option>
-                                <option value="mensal">mensal</option>
-                            </select>
+                            <input id="taxa-juros" type="number" value={taxaJuros} onChange={e => setTaxaJuros(e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-l-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-green-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" placeholder="Ex: 8.5" />
+                            <div className="relative">
+                                <select value={tipoTaxa} onChange={e => setTipoTaxa(e.target.value as any)} className="h-full bg-gray-600 border border-gray-600 rounded-r-lg pl-3 pr-10 py-2 text-white focus:outline-none focus:ring-2 focus:ring-green-500 appearance-none">
+                                    <option value="anual">anual</option>
+                                    <option value="mensal">mensal</option>
+                                </select>
+                                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-300" size={16}/>
+                            </div>
                         </div>
                     </div>
                     <div>
                         <label htmlFor="periodo" className="block text-sm font-medium text-gray-300 mb-1">Período</label>
                         <div className="flex">
-                            <input id="periodo" type="number" value={periodo} onChange={e => setPeriodo(e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-l-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-red-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" placeholder="Ex: 20" />
-                            <select value={tipoPeriodo} onChange={e => setTipoPeriodo(e.target.value as any)} className="bg-gray-600 border border-gray-600 rounded-r-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-red-500">
-                                <option value="anos">ano(s)</option>
-                                <option value="meses">meses</option>
-                            </select>
+                            <input id="periodo" type="number" value={periodo} onChange={e => setPeriodo(e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-l-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-green-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" placeholder="Ex: 20" />
+                             <div className="relative">
+                                <select value={tipoPeriodo} onChange={e => setTipoPeriodo(e.target.value as any)} className="h-full bg-gray-600 border border-gray-600 rounded-r-lg pl-3 pr-10 py-2 text-white focus:outline-none focus:ring-2 focus:ring-green-500 appearance-none">
+                                    <option value="anos">ano(s)</option>
+                                    <option value="meses">meses</option>
+                                </select>
+                                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-300" size={16}/>
+                             </div>
                         </div>
                     </div>
                     <div className="flex items-center space-x-4 pt-2">
-                        <button onClick={handleCalcular} className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-lg transition-colors">Calcular</button>
+                        <button onClick={handleCalcular} className="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg transition-colors">Calcular</button>
                         <button onClick={handleLimpar} className="text-gray-400 hover:text-white text-sm font-medium transition-colors whitespace-nowrap">Limpar</button>
                     </div>
                 </div>

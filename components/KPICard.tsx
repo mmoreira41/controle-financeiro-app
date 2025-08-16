@@ -1,11 +1,11 @@
 import React from 'react';
-import { Landmark, ArrowUpCircle, ArrowDownCircle, CreditCard } from 'lucide-react';
+import { Landmark, ArrowUpCircle, ArrowDownCircle, CreditCard, PiggyBank } from 'lucide-react';
 import { formatCurrency } from '../utils/format';
 
 interface KPICardProps {
   label: string;
   value: number;
-  icon: 'bank' | 'up' | 'down' | 'card';
+  icon: 'bank' | 'up' | 'down' | 'card' | 'invest';
   projectedValue?: number;
   projectedLabel?: string;
 }
@@ -16,6 +16,7 @@ const KPICard: React.FC<KPICardProps> = ({ label, value, icon, projectedValue, p
     up: <ArrowUpCircle size={24} className="text-green-400" />,
     down: <ArrowDownCircle size={24} className="text-red-400" />,
     card: <CreditCard size={24} className="text-purple-400" />,
+    invest: <PiggyBank size={24} className="text-lime-400" />,
   };
 
   return (

@@ -68,6 +68,37 @@ export const CORES_CARTAO = [
   { label: 'Cinza', value: '#6b7280' },
 ];
 
+export const CORES_BANCO: { [key: string]: string } = {
+  "caixa": "#004B8D",
+  "bradesco": "#CC092F",
+  "nubank": "#8A05BE",
+  "itau": "#EC7000",
+  "itaú": "#EC7000",
+  "banco do brasil": "#FFCC29",
+  "bb": "#FFCC29",
+  "santander": "#EC0000",
+  "picpay": "#21C25E",
+  "mercado pago": "#009EE3",
+  "inter": "#FF6C00",
+  "pagbank": "#00B140",
+  "original": "#00A859",
+  "ame": "#E60026",
+  "c6": "#000000",
+  "btg": "#003087",
+  "pan": "#0033A0",
+  "neon": "#00CFFF",
+  "bv": "#004481",
+  "votorantim": "#004481",
+  "banestes": "#004785",
+  "banrisul": "#00ADEF",
+  "sicredi": "#8DC63F",
+  "sicoob": "#004531",
+  "safra": "#00205B",
+  "daycoval": "#002D62",
+  "mercantil": "#003DA5",
+  "alfa": "#005DAA"
+};
+
 export function getCategoryIcon(tipo: TipoCategoria) {
     switch (tipo) {
         case TipoCategoria.Entrada:

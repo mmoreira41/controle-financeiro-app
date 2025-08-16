@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Area } from 'recharts';
 import { brMoney } from '../utils/format';
@@ -12,7 +11,7 @@ interface PatrimonioLiquidoChartProps {
   data: ChartData[];
 }
 
-const PatrimonioLiquidoChart: React.FC<PatrimonioLiquidoChartProps> = ({ data }) => {
+const PodeApagar: React.FC<PatrimonioLiquidoChartProps> = ({ data }) => {
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       return (
@@ -58,4 +57,4 @@ const PatrimonioLiquidoChart: React.FC<PatrimonioLiquidoChartProps> = ({ data })
   );
 };
 
-export default PatrimonioLiquidoChart;
+export default PodeApagar;

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { AlertTriangle, Info } from 'lucide-react';
+import { AlertTriangle, Info, ChevronDown } from 'lucide-react';
 
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
@@ -17,9 +17,10 @@ import ConfirmationModal, { ConfirmationModalData } from './components/Confirmat
 import Modal from './components/Modal';
 import CurrencyInput from './components/CurrencyInput';
 import ImageCropModal from './components/ImageCropModal';
+import SearchModal from './components/SearchModal';
 
-import { Page, ContaBancaria, TransacaoBanco, Cartao, Categoria, CompraCartao, ParcelaCartao, TipoCategoria, ModalState, NavigationState, ObjetivoInvestimento } from './types';
-import { CATEGORIAS_PADRAO } from './constants';
+import { Page, ContaBancaria, TransacaoBanco, Cartao, Categoria, CompraCartao, ParcelaCartao, TipoCategoria, ModalState, NavigationState, ObjetivoInvestimento, Settings } from './types';
+import { CATEGORIAS_PADRAO, CORES_CARTAO } from './constants';
 import { formatCurrency, computeFirstCompetency, addMonths, ymToISOFirstDay, splitInstallments, parseBrDate, parseCurrency, formatDate, calculateSaldo } from './utils/format';
 
 
@@ -75,8 +76,8 @@ const App: React.FC = () => {
 
   // Mock Data (used only for the first load if localStorage is empty)
   const initialContas: ContaBancaria[] = [
-    { id: 'b8d8e5e6-c5a4-4c4f-9b1d-2f0a1c2b3d4e', nome: 'Conta Corrente Nu', saldo_inicial: 0, data_inicial: '2024-07-01', ativo: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-    { id: 'a1b2c3d4-e5f6-7890-1234-567890abcdef', nome: 'Poupança Itaú', saldo_inicial: 0, data_inicial: '2024-01-01', ativo: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+    { id: 'b8d8e5e6-c5a4-4c4f-9b1d-2f0a1c2b3d4e', nome: 'Conta Corrente Nu', saldo_inicial: 0, data_inicial: '2024-07-01', ativo: true, cor: '#a855f7', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+    { id: 'a1b2c3d4-e5f6-7890-1234-567890abcdef', nome: 'Poupança Itaú', saldo_inicial: 0, data_inicial: '2024-01-01', ativo: true, cor: '#f97316', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
   ];
 
   const initialTransacoes: TransacaoBanco[] = [
@@ -98,6 +99,7 @@ const App: React.FC = () => {
   const [parcelas, setParcelas] = usePersistentState<ParcelaCartao[]>('parcelas', []);
   const [objetivos, setObjetivos] = usePersistentState<ObjetivoInvestimento[]>('objetivos', []);
   const [profilePicture, setProfilePicture] = usePersistentState<string | null>('profilePicture', null);
+  const [settings, setSettings] = usePersistentState<Settings>('settings', { showPercentageChange: false });
   const [imageToCrop, setImageToCrop] = useState<string | null>(null);
 
   const [csvImportState, setCsvImportState] = useState<CsvImportState>(null);
@@ -111,6 +113,10 @@ const App: React.FC = () => {
   const [editingCompra, setEditingCompra] = useState<CompraCartao | null>(null);
   
   const [isSaldoInicialEditBlocked, setSaldoInicialEditBlocked] = useState(false);
+
+  // Search state
+  const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
 
   const isTransacaoModalOpen = modalState.modal === 'nova-transacao' || modalState.modal === 'editar-transacao';
   const isTransferModalOpen = modalState.modal === 'nova-transferencia' || modalState.modal === 'editar-transferencia';
@@ -149,7 +155,15 @@ const App: React.FC = () => {
             switch(template.recorrencia) {
                 case 'diario': nextDate.setUTCDate(nextDate.getUTCDate() + 1); break;
                 case 'semanal': nextDate.setUTCDate(nextDate.getUTCDate() + 7); break;
-                case 'mensal': nextDate.setUTCMonth(nextDate.getUTCMonth() + 1); break;
+                case 'mensal': {
+                    const currentMonth = nextDate.getUTCMonth();
+                    nextDate.setUTCMonth(currentMonth + 1);
+                    // If the month rolls over incorrectly (e.g., Jan 31 -> Mar 3), set to last day of correct next month
+                    if (nextDate.getUTCMonth() !== (currentMonth + 1) % 12 && nextDate.getUTCMonth() !== 0) {
+                        nextDate.setUTCDate(0);
+                    }
+                    break;
+                }
                 case 'anual': nextDate.setUTCFullYear(nextDate.getUTCFullYear() + 1); break;
             }
         };
@@ -181,7 +195,7 @@ const App: React.FC = () => {
   }, []); // Run on mount
 
   // Handlers Contas
-  const handleAddConta = (contaData: { nome: string; saldo_inicial: number; ativo: boolean; data_inicial: string; }): ContaBancaria | null => {
+  const handleAddConta = (contaData: { nome: string; saldo_inicial: number; ativo: boolean; data_inicial: string; cor: string; }): ContaBancaria | null => {
     if (contas.some(c => c.nome.toLowerCase() === contaData.nome.toLowerCase())) {
         showToast("Já existe uma conta com esse nome.", 'error');
         return null;
@@ -199,6 +213,7 @@ const App: React.FC = () => {
         saldo_inicial: 0, // Saldo inicial é sempre 0 na conta
         data_inicial: contaData.data_inicial,
         ativo: contaData.ativo,
+        cor: contaData.cor || CORES_CARTAO[0].value,
         createdAt: agora,
         updatedAt: agora
     };
@@ -263,7 +278,7 @@ const App: React.FC = () => {
       if (!conta) return;
       
       const transacoesDaConta = transacoes.filter(t => t.conta_id === contaId);
-      if (transacoesDaConta.length > 0) {
+      if (transacoesDaConta.length > 1) { // Allow deletion if only initial balance exists
           setConfirmation({
               title: "Exclusão Bloqueada",
               message: `Não é possível excluir "${conta.nome}" porque existem lançamentos. Exclua os lançamentos antes de remover a conta.`,
@@ -283,6 +298,7 @@ const App: React.FC = () => {
                   setTransacoes(prev => prev.filter(t => t.conta_id !== contaId));
                   setConfirmation(null);
                   showToast("Registro excluído com sucesso.");
+                  if(selectedViewId === contaId) setSelectedViewId('all');
               }, style: 'danger' },
           ]
       });
@@ -448,6 +464,15 @@ const App: React.FC = () => {
 
         showToast("Alterações salvas com sucesso.");
         return true;
+    };
+
+    const handleToggleTransactionRealizado = (transacaoId: string) => {
+        const transacao = transacoes.find(t => t.id === transacaoId);
+        if (transacao && !transacao.realizado) {
+            const updatedTx = { ...transacao, realizado: true, previsto: false, updatedAt: new Date().toISOString() };
+            setTransacoes(prev => prev.map(t => t.id === transacaoId ? updatedTx : t));
+            showToast(`"${transacao.descricao}" marcada como realizada.`, 'success');
+        }
     };
 
     const handleUpdateTransferencia = (transacaoId: string, origemId: string, destinoId: string, valor: number, data: string, descricao: string): boolean => {
@@ -926,6 +951,7 @@ const App: React.FC = () => {
                         localStorage.removeItem('objetivos');
                         localStorage.removeItem('categorias');
                         localStorage.removeItem('profilePicture');
+                        localStorage.removeItem('settings');
                         
                         // Reset state to initial values
                         setContas(initialContas);
@@ -936,6 +962,7 @@ const App: React.FC = () => {
                         setObjetivos([]);
                         setCategorias(CATEGORIAS_PADRAO);
                         setProfilePicture(null);
+                        setSettings({ showPercentageChange: false });
                         
                         setConfirmation(null);
                         showToast("Todos os dados foram apagados.", "info");
@@ -956,6 +983,7 @@ const App: React.FC = () => {
             objetivos,
             categorias,
             profilePicture,
+            settings,
         };
         const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(data, null, 2))}`;
         const link = document.createElement("a");
@@ -1089,6 +1117,7 @@ const App: React.FC = () => {
                                         setObjetivos(importedData.objetivos || []);
                                         setCategorias(importedData.categorias || CATEGORIAS_PADRAO);
                                         setProfilePicture(importedData.profilePicture || null);
+                                        setSettings(importedData.settings || { showPercentageChange: false });
                                         setConfirmation(null);
                                         showToast("Dados importados com sucesso.", "success");
                                         setCurrentPage('resumo');
@@ -1261,6 +1290,7 @@ const App: React.FC = () => {
             saldo_inicial: saldoInicialValue,
             ativo: true,
             data_inicial: dataInicialValue,
+            cor: CORES_CARTAO[Math.floor(Math.random() * CORES_CARTAO.length)].value
         });
     
         if (novaConta) {
@@ -1500,6 +1530,44 @@ const App: React.FC = () => {
     
     const clearNavigationState = () => setNavigationState(null);
 
+    const searchResults = useMemo(() => {
+      if (!searchTerm.trim()) {
+        return { contas: [], cartoes: [], transacoes: [], compras: [] };
+      }
+      const lowerCaseTerm = searchTerm.toLowerCase();
+  
+      const filteredContas = contas.filter(c => c.nome.toLowerCase().includes(lowerCaseTerm));
+      const filteredCartoes = cartoes.filter(c => c.apelido.toLowerCase().includes(lowerCaseTerm));
+      const filteredTransacoes = transacoes.filter(t => t.descricao.toLowerCase().includes(lowerCaseTerm));
+      const filteredCompras = compras.filter(c => c.descricao.toLowerCase().includes(lowerCaseTerm));
+  
+      return {
+        contas: filteredContas,
+        cartoes: filteredCartoes,
+        transacoes: filteredTransacoes,
+        compras: filteredCompras,
+      };
+    }, [searchTerm, contas, cartoes, transacoes, compras]);
+
+    const handleSearchResultClick = (item: any, type: 'conta' | 'cartao' | 'transacao' | 'compra') => {
+      setIsSearchModalOpen(false);
+      setSearchTerm('');
+      
+      switch(type) {
+        case 'conta':
+          handlePageChange('contas-extrato', { viewId: item.id, month: item.data_inicial.slice(0, 7) });
+          break;
+        case 'cartao':
+          handlePageChange('cartoes', { viewId: item.id });
+          break;
+        case 'transacao':
+          handlePageChange('contas-extrato', { viewId: item.conta_id, month: item.data.slice(0, 7) });
+          break;
+        case 'compra':
+          handlePageChange('cartoes', { viewId: item.cartao_id, month: item.data_compra.slice(0, 7) });
+          break;
+      }
+    };
   const renderPage = () => {
     const pageProps = {
       modalState,
@@ -1522,6 +1590,9 @@ const App: React.FC = () => {
                     categorias={categorias}
                     setCurrentPage={handlePageChange}
                     openModal={openModal}
+                    selectedMonth={selectedMonth}
+                    onMonthChange={setSelectedMonth}
+                    settings={settings}
                 />;
       case 'contas-extrato':
         return <ContasExtratoPage 
@@ -1530,6 +1601,7 @@ const App: React.FC = () => {
                     deleteTransacao={handleDeleteTransacao} 
                     deleteTransacoes={handleDeleteTransacoes}
                     updateTransacoesCategoria={handleMassCategoryUpdate}
+                    toggleTransactionRealizado={handleToggleTransactionRealizado}
                     navigationState={navigationState}
                     clearNavigationState={clearNavigationState}
                     {...pageProps}
@@ -1547,7 +1619,6 @@ const App: React.FC = () => {
                   contas={contas} 
                   transacoes={transacoes} 
                   categorias={categorias} 
-                  cartoes={cartoes} 
                   compras={compras} 
                   parcelas={parcelas} 
                   selectedMonth={selectedMonth} 
@@ -1578,6 +1649,10 @@ const App: React.FC = () => {
                     handleDeleteAllData={handleDeleteAllData}
                     handleExportData={handleExportData}
                     handleImportData={handleImportData}
+                    settings={settings}
+                    setSettings={setSettings}
+                    navigationState={navigationState}
+                    clearNavigationState={clearNavigationState}
                     {...{modalState, openModal, closeModal}}
                 />;
       case 'calculadora-juros-compostos':
@@ -1594,6 +1669,9 @@ const App: React.FC = () => {
                     categorias={categorias}
                     setCurrentPage={handlePageChange}
                     openModal={openModal}
+                    selectedMonth={selectedMonth}
+                    onMonthChange={setSelectedMonth}
+                    settings={settings}
                 />;
     }
   };
@@ -1620,13 +1698,14 @@ const App: React.FC = () => {
         
         <div className="flex-1 flex flex-col overflow-hidden">
           <Header 
-            setCurrentPage={(p) => handlePageChange(p)}
+            setCurrentPage={handlePageChange}
             profilePicture={profilePicture}
             onImageSelect={setImageToCrop}
             onImageRemove={() => {
                 setProfilePicture(null);
                 showToast("Foto de perfil removida.");
             }}
+            onSearchClick={() => setIsSearchModalOpen(true)}
           />
           <main className="flex-1 p-4 md:p-8 overflow-y-auto pb-28 md:pb-8">
               {renderPage()}
@@ -1655,6 +1734,17 @@ const App: React.FC = () => {
         />
       )}
 
+      {isSearchModalOpen && (
+        <SearchModal
+          isOpen={isSearchModalOpen}
+          onClose={() => setIsSearchModalOpen(false)}
+          searchTerm={searchTerm}
+          onSearchTermChange={setSearchTerm}
+          results={searchResults}
+          onResultClick={handleSearchResultClick}
+        />
+      )}
+
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
       {confirmation && <ConfirmationModal data={confirmation} onClose={() => setConfirmation(null)} />}
       
@@ -1666,23 +1756,24 @@ const App: React.FC = () => {
             </>
         }>
             <form id="transacao-form" onSubmit={handleTransacaoSubmit} className="space-y-4">
-                <div><label htmlFor="data-transacao" className="block text-sm font-medium text-gray-300 mb-1">Data</label><input id="data-transacao" type="date" value={transacaoForm.data} onChange={e => setTransacaoForm({...transacaoForm, data: e.target.value})} required className="w-full bg-gray-700 p-2 rounded" disabled={!!editingTransacao?.meta_saldo_inicial && isSaldoInicialEditBlocked}/></div>
-                <div><label htmlFor="conta-transacao" className="block text-sm font-medium text-gray-300 mb-1">Conta</label><select id="conta-transacao" value={transacaoForm.conta_id} onChange={e => setTransacaoForm({...transacaoForm, conta_id: e.target.value})} required className="w-full bg-gray-700 p-2 rounded disabled:bg-gray-600" disabled={!!editingTransacao}><option value="" disabled>Selecione a conta</option>{contas.filter(c => c.ativo).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</select></div>
-                <div><label htmlFor="cat-transacao" className="block text-sm font-medium text-gray-300 mb-1">Categoria</label><select id="cat-transacao" value={transacaoForm.categoria_id} onChange={e => setTransacaoForm({...transacaoForm, categoria_id: e.target.value})} required className="w-full bg-gray-700 p-2 rounded disabled:bg-gray-600" disabled={!!editingTransacao?.meta_saldo_inicial || !!editingTransacao?.meta_pagamento}><option value="" disabled>Selecione a categoria</option>{categorias.filter(c => c.tipo !== TipoCategoria.Transferencia).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</select></div>
-                <div><label htmlFor="valor-transacao" className="block text-sm font-medium text-gray-300 mb-1">Valor</label><CurrencyInput id="valor-transacao" value={transacaoForm.valor} onValueChange={v => setTransacaoForm({...transacaoForm, valor: v})} required className="w-full bg-gray-700 p-2 rounded" placeholder="R$ 0,00" disabled={!!editingTransacao?.meta_saldo_inicial && isSaldoInicialEditBlocked}/></div>
-                <div><label htmlFor="desc-transacao" className="block text-sm font-medium text-gray-300 mb-1">Descrição</label><input id="desc-transacao" type="text" value={transacaoForm.descricao} onChange={e => setTransacaoForm({...transacaoForm, descricao: e.target.value})} className="w-full bg-gray-700 p-2 rounded" placeholder="Ex.: Compra supermercado"/></div>
+                <div><label htmlFor="data-transacao" className="block text-sm font-medium text-gray-300 mb-1">Data</label><input id="data-transacao" type="date" value={transacaoForm.data} onChange={e => setTransacaoForm({...transacaoForm, data: e.target.value})} required className="w-full bg-gray-700 p-2 rounded-lg" disabled={!!editingTransacao?.meta_saldo_inicial && isSaldoInicialEditBlocked}/></div>
+                <div className="relative"><label htmlFor="conta-transacao" className="block text-sm font-medium text-gray-300 mb-1">Conta</label><select id="conta-transacao" value={transacaoForm.conta_id} onChange={e => setTransacaoForm({...transacaoForm, conta_id: e.target.value})} required className="w-full bg-gray-700 p-2 pl-3 pr-10 rounded-lg disabled:bg-gray-600 appearance-none focus:outline-none focus:ring-2 focus:ring-green-500" disabled={!!editingTransacao}><option value="" disabled>Selecione a conta</option>{contas.filter(c => c.ativo).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</select><ChevronDown className="absolute right-3 top-9 text-gray-400 pointer-events-none" size={18} /></div>
+                <div className="relative"><label htmlFor="cat-transacao" className="block text-sm font-medium text-gray-300 mb-1">Categoria</label><select id="cat-transacao" value={transacaoForm.categoria_id} onChange={e => setTransacaoForm({...transacaoForm, categoria_id: e.target.value})} required className="w-full bg-gray-700 p-2 pl-3 pr-10 rounded-lg disabled:bg-gray-600 appearance-none focus:outline-none focus:ring-2 focus:ring-green-500" disabled={!!editingTransacao?.meta_saldo_inicial || !!editingTransacao?.meta_pagamento}><option value="" disabled>Selecione a categoria</option>{categorias.filter(c => c.tipo !== TipoCategoria.Transferencia).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</select><ChevronDown className="absolute right-3 top-9 text-gray-400 pointer-events-none" size={18} /></div>
+                <div><label htmlFor="valor-transacao" className="block text-sm font-medium text-gray-300 mb-1">Valor</label><CurrencyInput id="valor-transacao" value={transacaoForm.valor} onValueChange={v => setTransacaoForm({...transacaoForm, valor: v})} required className="w-full bg-gray-700 p-2 rounded-lg" placeholder="R$ 0,00" disabled={!!editingTransacao?.meta_saldo_inicial && isSaldoInicialEditBlocked}/></div>
+                <div><label htmlFor="desc-transacao" className="block text-sm font-medium text-gray-300 mb-1">Descrição</label><input id="desc-transacao" type="text" value={transacaoForm.descricao} onChange={e => setTransacaoForm({...transacaoForm, descricao: e.target.value})} className="w-full bg-gray-700 p-2 rounded-lg" placeholder="Ex.: Compra supermercado"/></div>
                 <div className="flex items-center"><input type="checkbox" id="previsto-transacao" checked={transacaoForm.previsto} onChange={e => setTransacaoForm({...transacaoForm, previsto: e.target.checked})} className="h-4 w-4 rounded" disabled={!!editingTransacao?.meta_saldo_inicial}/> <label htmlFor="previsto-transacao" className="ml-2 text-sm text-gray-300">Previsto?</label></div>
                 <div>
                   <div className="flex items-center"><input type="checkbox" id="recorrente-transacao" checked={!!transacaoForm.recorrencia} onChange={e => setTransacaoForm({...transacaoForm, recorrencia: e.target.checked ? 'mensal' : null})} className="h-4 w-4 rounded"/> <label htmlFor="recorrente-transacao" className="ml-2 text-sm text-gray-300">Lançamento Recorrente</label></div>
                   {transacaoForm.recorrencia && (
-                    <div className="mt-2 pl-6">
+                    <div className="mt-2 pl-6 relative">
                       <label htmlFor="frequencia-transacao" className="block text-sm font-medium text-gray-300 mb-1">Frequência</label>
-                      <select id="frequencia-transacao" value={transacaoForm.recorrencia} onChange={e => setTransacaoForm({...transacaoForm, recorrencia: e.target.value as TransacaoBanco['recorrencia']})} className="w-full bg-gray-700 p-2 rounded">
+                      <select id="frequencia-transacao" value={transacaoForm.recorrencia} onChange={e => setTransacaoForm({...transacaoForm, recorrencia: e.target.value as TransacaoBanco['recorrencia']})} className="w-full bg-gray-700 p-2 pl-3 pr-10 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-green-500">
                         <option value="diario">Diário</option>
                         <option value="semanal">Semanal</option>
                         <option value="mensal">Mensal</option>
                         <option value="anual">Anual</option>
                       </select>
+                      <ChevronDown className="absolute right-3 top-9 text-gray-400 pointer-events-none" size={18} />
                     </div>
                   )}
                 </div>
@@ -1696,11 +1787,11 @@ const App: React.FC = () => {
             </>
         }>
             <form id="transferencia-form" onSubmit={handleTransferenciaSubmit} className="space-y-4">
-                <div><label htmlFor="origem-transfer" className="block text-sm font-medium text-gray-300 mb-1">Conta de Origem</label><select id="origem-transfer" value={transferenciaForm.origem_id} onChange={e => setTransferenciaForm({...transferenciaForm, origem_id: e.target.value})} required className="w-full bg-gray-700 p-2 rounded"><option value="" disabled>Selecione...</option>{contas.filter(c => c.ativo).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</select></div>
-                <div><label htmlFor="destino-transfer" className="block text-sm font-medium text-gray-300 mb-1">Conta de Destino</label><select id="destino-transfer" value={transferenciaForm.destino_id} onChange={e => setTransferenciaForm({...transferenciaForm, destino_id: e.target.value})} required className="w-full bg-gray-700 p-2 rounded"><option value="" disabled>Selecione...</option>{contas.filter(c => c.ativo && c.id !== transferenciaForm.origem_id).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</select></div>
-                <div><label htmlFor="data-transfer" className="block text-sm font-medium text-gray-300 mb-1">Data</label><input id="data-transfer" type="date" value={transferenciaForm.data} onChange={e => setTransferenciaForm({...transferenciaForm, data: e.target.value})} required className="w-full bg-gray-700 p-2 rounded"/></div>
-                <div><label htmlFor="valor-transfer" className="block text-sm font-medium text-gray-300 mb-1">Valor</label><CurrencyInput id="valor-transfer" value={transferenciaForm.valor} onValueChange={v => setTransferenciaForm({...transferenciaForm, valor: v})} required className="w-full bg-gray-700 p-2 rounded" placeholder="R$ 0,00" /></div>
-                <div><label htmlFor="desc-transfer" className="block text-sm font-medium text-gray-300 mb-1">Descrição</label><input id="desc-transfer" type="text" value={transferenciaForm.descricao} onChange={e => setTransferenciaForm({...transferenciaForm, descricao: e.target.value})} className="w-full bg-gray-700 p-2 rounded" placeholder="Ex.: Transferência para poupança"/></div>
+                <div className="relative"><label htmlFor="origem-transfer" className="block text-sm font-medium text-gray-300 mb-1">Conta de Origem</label><select id="origem-transfer" value={transferenciaForm.origem_id} onChange={e => setTransferenciaForm({...transferenciaForm, origem_id: e.target.value})} required className="w-full bg-gray-700 p-2 pl-3 pr-10 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-green-500"><option value="" disabled>Selecione...</option>{contas.filter(c => c.ativo).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</select><ChevronDown className="absolute right-3 top-9 text-gray-400 pointer-events-none" size={18} /></div>
+                <div className="relative"><label htmlFor="destino-transfer" className="block text-sm font-medium text-gray-300 mb-1">Conta de Destino</label><select id="destino-transfer" value={transferenciaForm.destino_id} onChange={e => setTransferenciaForm({...transferenciaForm, destino_id: e.target.value})} required className="w-full bg-gray-700 p-2 pl-3 pr-10 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-green-500"><option value="" disabled>Selecione...</option>{contas.filter(c => c.ativo && c.id !== transferenciaForm.origem_id).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</select><ChevronDown className="absolute right-3 top-9 text-gray-400 pointer-events-none" size={18} /></div>
+                <div><label htmlFor="data-transfer" className="block text-sm font-medium text-gray-300 mb-1">Data</label><input id="data-transfer" type="date" value={transferenciaForm.data} onChange={e => setTransferenciaForm({...transferenciaForm, data: e.target.value})} required className="w-full bg-gray-700 p-2 rounded-lg"/></div>
+                <div><label htmlFor="valor-transfer" className="block text-sm font-medium text-gray-300 mb-1">Valor</label><CurrencyInput id="valor-transfer" value={transferenciaForm.valor} onValueChange={v => setTransferenciaForm({...transferenciaForm, valor: v})} required className="w-full bg-gray-700 p-2 rounded-lg" placeholder="R$ 0,00" /></div>
+                <div><label htmlFor="desc-transfer" className="block text-sm font-medium text-gray-300 mb-1">Descrição</label><input id="desc-transfer" type="text" value={transferenciaForm.descricao} onChange={e => setTransferenciaForm({...transferenciaForm, descricao: e.target.value})} className="w-full bg-gray-700 p-2 rounded-lg" placeholder="Ex.: Transferência para poupança"/></div>
             </form>
         </Modal>
 
@@ -1716,12 +1807,13 @@ const App: React.FC = () => {
           }
       >
           <form id="compra-form" onSubmit={handleCompraSubmit} className="space-y-4">
-              <div>
+              <div className="relative">
                   <label htmlFor="compra-cartao" className="block text-sm font-medium text-gray-300 mb-1.5">Cartão</label>
-                  <select id="compra-cartao" value={compraForm.cartao_id} onChange={e => setCompraForm({...compraForm, cartao_id: e.target.value})} required disabled={!!editingCompra} className="w-full h-11 bg-gray-700 border border-gray-600 rounded-lg px-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-600">
+                  <select id="compra-cartao" value={compraForm.cartao_id} onChange={e => setCompraForm({...compraForm, cartao_id: e.target.value})} required disabled={!!editingCompra} className="w-full h-11 bg-gray-700 border border-gray-600 rounded-lg pl-3 pr-10 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-600 appearance-none">
                       <option value="" disabled>Selecione o cartão...</option>
                       {cartoes.map(c => <option key={c.id} value={c.id}>{c.apelido}</option>)}
                   </select>
+                  <ChevronDown className="absolute right-3 top-[calc(50%+8px)] -translate-y-1/2 text-gray-400 pointer-events-none" size={20} />
               </div>
 
               <div>
@@ -1734,12 +1826,13 @@ const App: React.FC = () => {
                   <input id="compra-descricao" type="text" placeholder="Digite a descrição da compra" value={compraForm.descricao} onChange={e => setCompraForm({...compraForm, descricao: e.target.value})} className="w-full h-11 bg-gray-700 border border-gray-600 rounded-lg px-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"/>
               </div>
 
-              <div>
+              <div className="relative">
                   <label htmlFor="compra-categoria" className="block text-sm font-medium text-gray-300 mb-1.5">Categoria</label>
-                  <select id="compra-categoria" value={compraForm.categoria_id} onChange={e => setCompraForm({...compraForm, categoria_id: e.target.value})} required={!compraForm.estorno} disabled={compraForm.estorno} className="w-full h-11 bg-gray-700 border border-gray-600 rounded-lg px-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-600">
+                  <select id="compra-categoria" value={compraForm.categoria_id} onChange={e => setCompraForm({...compraForm, categoria_id: e.target.value})} required={!compraForm.estorno} disabled={compraForm.estorno} className="w-full h-11 bg-gray-700 border border-gray-600 rounded-lg pl-3 pr-10 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-600 appearance-none">
                       <option value="" disabled>Selecione...</option>
                       {categorias.filter(c => c.tipo === TipoCategoria.Saida).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
                   </select>
+                   <ChevronDown className="absolute right-3 top-[calc(50%+8px)] -translate-y-1/2 text-gray-400 pointer-events-none" size={20} />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -1777,12 +1870,13 @@ const App: React.FC = () => {
         >
             <form id="csv-import-form" onSubmit={handleConfirmCsvImport}>
                 <div className="space-y-4">
-                    <div>
+                    <div className="relative">
                         <label htmlFor="csv-conta-destino" className="block text-sm font-medium text-gray-300 mb-1">1. Para qual conta deseja importar?</label>
-                        <select id="csv-conta-destino" value={csvDestinoConta} onChange={e => setCsvDestinoConta(e.target.value)} required className="w-full bg-gray-700 p-2 rounded">
+                        <select id="csv-conta-destino" value={csvDestinoConta} onChange={e => setCsvDestinoConta(e.target.value)} required className="w-full bg-gray-700 p-2 pl-3 pr-10 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-green-500">
                             <option value="" disabled>Selecione...</option>
                             {contas.filter(c => c.ativo).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
                         </select>
+                        <ChevronDown className="absolute right-3 top-9 text-gray-400 pointer-events-none" size={18} />
                     </div>
                     
                     <div className="text-center text-sm text-gray-400">ou</div>
@@ -1790,7 +1884,7 @@ const App: React.FC = () => {
                     <div>
                         <label htmlFor="csv-nova-conta" className="block text-sm font-medium text-gray-300 mb-1">Crie uma nova conta para este extrato:</label>
                         <div className="flex space-x-2">
-                            <input id="csv-nova-conta" type="text" placeholder="Nome do Banco (Conta)" value={csvNewAccountName} onChange={e => setCsvNewAccountName(e.target.value)} className="w-full bg-gray-700 p-2 rounded" />
+                            <input id="csv-nova-conta" type="text" placeholder="Nome do Banco (Conta)" value={csvNewAccountName} onChange={e => setCsvNewAccountName(e.target.value)} className="w-full bg-gray-700 p-2 rounded-lg" />
                             <button type="button" onClick={handleCreateAccountFromCsv} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg whitespace-nowrap">Criar</button>
                         </div>
                         {csvImportState?.detectedFinalBalance !== undefined && (

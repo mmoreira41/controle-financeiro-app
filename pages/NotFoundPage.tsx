@@ -1,4 +1,3 @@
-
 import React from 'react';
 import PageHeader from '../components/PageHeader';
 import { Construction } from 'lucide-react';
@@ -7,7 +6,7 @@ interface NotFoundPageProps {
   pageTitle: string;
 }
 
-const NotFoundPage: React.FC<NotFoundPageProps> = ({ pageTitle }) => {
+const PodeApagar: React.FC<NotFoundPageProps> = ({ pageTitle }) => {
   return (
     <div className="animate-fade-in">
       <PageHeader
@@ -25,4 +24,4 @@ const NotFoundPage: React.FC<NotFoundPageProps> = ({ pageTitle }) => {
   );
 };
 
-export default NotFoundPage;
+export default PodeApagar;

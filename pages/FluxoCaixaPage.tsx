@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { ContaBancaria, TransacaoBanco, TipoCategoria, Categoria } from '../types';
-import { formatCurrency, formatDate, splitInstallments } from '../utils/format';
+import { ContaBancaria, TransacaoBanco, TipoCategoria, Categoria, CompraCartao, ParcelaCartao } from '../types';
+import { formatCurrency, formatDate, splitInstallments, calculateSaldo } from '../utils/format';
 import { AlertTriangle, X, Trash2, Pencil, Plus } from 'lucide-react';
 import DatePeriodSelector from '../components/DatePeriodSelector';
 import Modal from '../components/Modal';
@@ -10,15 +10,13 @@ interface FluxoCaixaPageProps {
   contas: ContaBancaria[];
   transacoes: TransacaoBanco[];
   categorias: Categoria[];
-  // Props below are not used in the new design but kept for interface consistency
-  cartoes: any[];
-  compras: any[];
-  parcelas: any[];
+  compras: CompraCartao[];
+  parcelas: ParcelaCartao[];
   selectedMonth: string;
   onMonthChange: (month: string) => void;
 }
 
-const FluxoCaixaPage: React.FC<FluxoCaixaPageProps> = ({ contas, transacoes, categorias, selectedMonth, onMonthChange }) => {
+const FluxoCaixaPage: React.FC<FluxoCaixaPageProps> = ({ contas, transacoes, categorias, compras, parcelas, selectedMonth, onMonthChange }) => {
   const [isSimulating, setIsSimulating] = useState(false);
   const [simulationTransactions, setSimulationTransactions] = useState<TransacaoBanco[]>([]);
   const [manageSimModalState, setManageSimModalState] = useState<{ date: string; type: TipoCategoria } | null>(null);
@@ -32,42 +30,41 @@ const FluxoCaixaPage: React.FC<FluxoCaixaPageProps> = ({ contas, transacoes, cat
   };
   
   useEffect(() => {
-    // Cleanup on component unmount
     return () => {
       exitSimulation();
     };
   }, []);
 
   const { fluxoData, minSaldo, maxSaldo, totais } = useMemo(() => {
-    const allTransactions = [...transacoes, ...simulationTransactions];
+    const allBankTransactions = [...transacoes, ...simulationTransactions];
     const [year, month] = selectedMonth.split('-').map(Number);
     const startDate = `${selectedMonth}-01`;
-    const endDate = new Date(year, month, 0).toISOString().split('T')[0];
-  
-    const contasAtivasIds = new Set(contas.filter(c => c.ativo).map(c => c.id));
-  
-    let saldoInicialPeriodo = 0;
-    transacoes
-      .filter(t => t.realizado && t.data < startDate && contasAtivasIds.has(t.conta_id))
-      .forEach(t => {
-        if (t.tipo === TipoCategoria.Entrada) saldoInicialPeriodo += t.valor;
-        else if (t.tipo === TipoCategoria.Saida || t.tipo === TipoCategoria.Investimento) saldoInicialPeriodo -= t.valor;
-        else if (t.tipo === TipoCategoria.Transferencia) {
-            if (t.meta_saldo_inicial) saldoInicialPeriodo += t.valor;
-            else if (t.meta_pagamento) saldoInicialPeriodo -= t.valor;
-            else {
-                 const pair = transacoes.find(p => p.id === t.transferencia_par_id);
-                 if (pair && t.id < pair.id) saldoInicialPeriodo -= t.valor;
-                 else saldoInicialPeriodo += t.valor;
-            }
-        }
-      });
-  
+    const lastDayOfMonth = new Date(year, month, 0).getDate();
+    const endDate = `${selectedMonth}-${lastDayOfMonth}`;
+
+    const firstDayOfMonth = new Date(year, month - 1, 1);
+    const previousDay = new Date(firstDayOfMonth);
+    previousDay.setDate(firstDayOfMonth.getDate() - 1);
+    const previousDayStr = previousDay.toISOString().split('T')[0];
+    
+    const contasAtivas = contas.filter(c => c.ativo);
+    const contasAtivasIds = new Set(contasAtivas.map(c => c.id));
+
+    const saldoInicialPeriodo = contasAtivas.reduce((total, conta) => {
+        return total + calculateSaldo(conta.id, transacoes, previousDayStr);
+    }, 0);
+
     const dailyAggregates: Record<string, { entradas: number; saidas: number; investimentos: number; transactions: TransacaoBanco[] }> = {};
     
-    allTransactions
+    allBankTransactions
       .filter(t => t.data >= startDate && t.data <= endDate && contasAtivasIds.has(t.conta_id))
+      .filter(t => !t.meta_pagamento) // Ignore credit card payments
       .forEach(t => {
+        // Ignore internal transfers for consolidated view
+        if (t.tipo === TipoCategoria.Transferencia && t.transferencia_par_id) {
+          return;
+        }
+
         if (!dailyAggregates[t.data]) {
           dailyAggregates[t.data] = { entradas: 0, saidas: 0, investimentos: 0, transactions: [] };
         }
@@ -75,19 +72,53 @@ const FluxoCaixaPage: React.FC<FluxoCaixaPageProps> = ({ contas, transacoes, cat
         if (t.tipo === TipoCategoria.Entrada) dailyAggregates[t.data].entradas += t.valor;
         else if (t.tipo === TipoCategoria.Saida) dailyAggregates[t.data].saidas += t.valor;
         else if (t.tipo === TipoCategoria.Investimento) dailyAggregates[t.data].investimentos += t.valor;
-        else if (t.tipo === TipoCategoria.Transferencia && t.meta_pagamento) dailyAggregates[t.data].saidas += t.valor;
-
+        
         dailyAggregates[t.data].transactions.push(t);
       });
+      
+    parcelas.forEach(p => {
+      const compra = compras.find(c => c.id === p.compra_id);
+      // Only include purchases made within the selected month
+      if (!compra || compra.data_compra < startDate || compra.data_compra > endDate) {
+        return;
+      }
+      
+      const dayStr = compra.data_compra;
+      if (!dailyAggregates[dayStr]) {
+        dailyAggregates[dayStr] = { entradas: 0, saidas: 0, investimentos: 0, transactions: [] };
+      }
+
+      if (compra.estorno) {
+        dailyAggregates[dayStr].entradas += p.valor_parcela;
+      } else {
+        dailyAggregates[dayStr].saidas += p.valor_parcela;
+      }
+
+      // Create a pseudo-transaction for the tooltip
+      const pseudoTx: TransacaoBanco = {
+          id: `cc-${p.id}`,
+          conta_id: 'credit-card',
+          data: dayStr,
+          valor: p.valor_parcela,
+          categoria_id: compra.categoria_id,
+          tipo: compra.estorno ? TipoCategoria.Entrada : TipoCategoria.Saida,
+          descricao: `${compra.descricao} (CC ${p.n_parcela}/${compra.parcelas_total})`,
+          previsto: false,
+          realizado: true,
+      };
+      dailyAggregates[dayStr].transactions.push(pseudoTx);
+    });
   
     const result: DayData[] = [];
     let saldoDiaAnterior = saldoInicialPeriodo;
-    const current = new Date(`${startDate}T12:00:00Z`); // Use UTC noon to avoid timezone issues
+    const current = new Date(`${startDate}T12:00:00Z`);
     const last = new Date(`${endDate}T12:00:00Z`);
   
     while (current <= last) {
       const dayStr = current.toISOString().split('T')[0];
       const daily = dailyAggregates[dayStr] || { entradas: 0, saidas: 0, investimentos: 0, transactions: [] };
+      
+      daily.transactions.sort((a,b) => a.descricao.localeCompare(b.descricao));
       
       const saldoDiario = saldoDiaAnterior + daily.entradas - daily.saidas - daily.investimentos;
       
@@ -112,7 +143,7 @@ const FluxoCaixaPage: React.FC<FluxoCaixaPageProps> = ({ contas, transacoes, cat
     }), { entradas: 0, saidas: 0, investimentos: 0 });
 
     return { fluxoData: result, minSaldo: min, maxSaldo: max, totais };
-  }, [contas, transacoes, selectedMonth, simulationTransactions]);
+  }, [contas, transacoes, selectedMonth, simulationTransactions, compras, parcelas]);
 
   const getSaldoCellStyle = (saldo: number): React.CSSProperties => {
     if (maxSaldo === minSaldo || saldo === 0) return { backgroundColor: 'transparent' };
@@ -289,8 +320,11 @@ const Tooltip = ({ content }: { content: { x: number, y: number, dayData: DayDat
             <p className="font-bold text-white mb-2">{formatDate(content.dayData.data)}</p>
             <div className="space-y-1 max-h-48 overflow-y-auto text-xs no-scrollbar">
                 {content.dayData.transactions.map(t => (
-                    <div key={t.id} className={`flex justify-between ${t.id.startsWith('sim-') ? 'italic' : ''}`}>
-                        <span className="truncate pr-2 text-gray-300">{t.id.startsWith('sim-') && 'Sim: '}{t.descricao}</span>
+                    <div key={t.id} className={`flex justify-between ${t.id.startsWith('sim-') || t.id.startsWith('cc-') ? 'italic' : ''}`}>
+                        <span className="truncate pr-2 text-gray-300">
+                            {t.id.startsWith('sim-') && 'Sim: '}
+                            {t.descricao}
+                        </span>
                         <span className={`font-mono font-semibold whitespace-nowrap ${t.tipo === TipoCategoria.Entrada ? 'text-green-400' : 'text-red-400'}`}>
                             {t.tipo === TipoCategoria.Entrada ? '+' : '-'}{formatCurrency(t.valor)}
                         </span>

@@ -1,17 +1,16 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Page } from '../types';
-import { User, Pencil, Calendar, Search, Menu, Camera, Trash2, LogOut } from 'lucide-react';
+import { User, Pencil, Calendar, Search, Menu, Camera, Trash2, Settings, TrendingUp, Shield } from 'lucide-react';
 
 interface HeaderProps {
-  setCurrentPage: (page: Page) => void;
+  setCurrentPage: (page: Page, state?: { viewId: string; }) => void;
   profilePicture: string | null;
   onImageSelect: (imageSrc: string) => void;
   onImageRemove: () => void;
-  onLogout?: () => void;
-  user?: { email?: string; name?: string } | null;
+  onSearchClick: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ setCurrentPage, profilePicture, onImageSelect, onImageRemove, onLogout, user }) => {
+const Header: React.FC<HeaderProps> = ({ setCurrentPage, profilePicture, onImageSelect, onImageRemove, onSearchClick }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isCalcMenuOpen, setIsCalcMenuOpen] = useState(false);
   const calcMenuRef = useRef<HTMLDivElement>(null);
@@ -121,7 +120,7 @@ const Header: React.FC<HeaderProps> = ({ setCurrentPage, profilePicture, onImage
             <button onClick={() => setCurrentPage('fluxo')} className="p-2 rounded-full hover:bg-gray-700/50 text-gray-400 hover:text-white transition-colors" aria-label="Calendário">
                 <Calendar size={20} />
             </button>
-            <button className="p-2 rounded-full hover:bg-gray-700/50 text-gray-400 hover:text-white transition-colors" aria-label="Buscar">
+            <button onClick={onSearchClick} className="p-2 rounded-full hover:bg-gray-700/50 text-gray-400 hover:text-white transition-colors" aria-label="Buscar">
                 <Search size={20} />
             </button>
             <div className="relative" ref={calcMenuRef}>
@@ -129,38 +128,45 @@ const Header: React.FC<HeaderProps> = ({ setCurrentPage, profilePicture, onImage
                     <Menu size={20} />
                 </button>
                 {isCalcMenuOpen && (
-                    <div className="absolute right-0 mt-2 w-64 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50 animate-fade-in-down">
+                    <div className="absolute right-0 mt-2 w-72 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50 animate-fade-in-down">
                         <div className="p-2">
+                            <h4 className="px-3 pt-2 pb-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                                Ajustes
+                            </h4>
+                            <a href="#" onClick={(e) => {
+                                e.preventDefault();
+                                setCurrentPage('perfil', { viewId: 'visualizacao' });
+                                setIsCalcMenuOpen(false);
+                            }} className="flex items-center space-x-3 w-full text-left px-3 py-2 text-sm text-gray-300 rounded-md hover:bg-gray-700 hover:text-white">
+                                <Settings size={16} />
+                                <span>Configurações</span>
+                            </a>
+                            
+                            <div className="border-t border-gray-700 my-1"></div>
+                            
+                            <h4 className="px-3 pt-2 pb-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                                Calculadoras
+                            </h4>
                             <a href="#" onClick={(e) => {
                                 e.preventDefault();
                                 setCurrentPage('calculadora-juros-compostos');
                                 setIsCalcMenuOpen(false);
-                            }} className="block w-full text-left px-3 py-2 text-sm text-gray-300 rounded-md hover:bg-gray-700 hover:text-white">
-                                Calculadora de Juros Compostos
+                            }} className="flex items-center space-x-3 w-full text-left px-3 py-2 text-sm text-gray-300 rounded-md hover:bg-gray-700 hover:text-white">
+                                <TrendingUp size={16} />
+                                <span>Calculadora de Juros Compostos</span>
                             </a>
                              <a href="#" onClick={(e) => {
                                 e.preventDefault();
                                 setCurrentPage('calculadora-reserva-emergencia');
                                 setIsCalcMenuOpen(false);
-                            }} className="block w-full text-left px-3 py-2 text-sm text-gray-300 rounded-md hover:bg-gray-700 hover:text-white">
-                                Calculadora de Reserva de Emergência
+                            }} className="flex items-center space-x-3 w-full text-left px-3 py-2 text-sm text-gray-300 rounded-md hover:bg-gray-700 hover:text-white">
+                                <Shield size={16} />
+                                <span>Calculadora de Reserva de Emergência</span>
                             </a>
                         </div>
                     </div>
                 )}
             </div>
-            
-            {/* Botão de Logout */}
-            {onLogout && (
-                <button 
-                    onClick={onLogout}
-                    className="p-2 rounded-full hover:bg-red-700/50 text-gray-400 hover:text-red-400 transition-colors" 
-                    aria-label="Sair da Conta"
-                    title="Sair da Conta"
-                >
-                    <LogOut size={20} />
-                </button>
-            )}
         </div>
       </div>
     </header>

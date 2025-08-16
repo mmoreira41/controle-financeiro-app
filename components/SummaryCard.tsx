@@ -8,9 +8,10 @@ interface SummaryCardProps {
   change: number; // percentage change, e.g., 6.9 for +6.9%
   icon: React.ReactNode;
   onClick?: () => void;
+  showPercentageChange?: boolean;
 }
 
-const SummaryCard: React.FC<SummaryCardProps> = ({ title, value, change, icon, onClick }) => {
+const SummaryCard: React.FC<SummaryCardProps> = ({ title, value, change, icon, onClick, showPercentageChange = false }) => {
   const isPositive = change >= 0;
   // Handle Infinity and NaN cases
   const isChangeFinite = isFinite(change);
@@ -26,7 +27,7 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ title, value, change, icon, o
       </div>
       <div>
         <p className="text-2xl font-bold text-white">{formatCurrency(value)}</p>
-        {isChangeFinite && (
+        {showPercentageChange && isChangeFinite && (
             <div className="flex items-center text-sm mt-1">
                 <div className={`flex items-center px-2 py-0.5 rounded-full text-xs font-bold ${isPositive ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
                     {isPositive ? <ArrowUp size={12} className="mr-1" /> : <ArrowDown size={12} className="mr-1" />}

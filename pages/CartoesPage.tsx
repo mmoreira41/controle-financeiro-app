@@ -62,6 +62,24 @@ const CartoesPage: React.FC<CartoesPageProps> = ({
     return cartoes.find(c => c.id === selectedView);
   }, [cartoes, selectedView]);
   
+    const cartoesComFatura = useMemo(() => {
+        const [year, month] = selectedMonth.split('-').map(Number);
+        const competenciaAtual = `${year}-${String(month).padStart(2, '0')}`;
+
+        return cartoes.map(cartao => {
+            const parcelasDaFatura = parcelas.filter(p => {
+                const compra = compras.find(c => c.id === p.compra_id);
+                return compra && compra.cartao_id === cartao.id && p.competencia_fatura === competenciaAtual;
+            });
+            const totalFatura = parcelasDaFatura.reduce((sum, p) => sum + p.valor_parcela, 0);
+
+            return {
+                ...cartao,
+                faturaAtual: totalFatura,
+            };
+        }).sort((a, b) => a.apelido.localeCompare(b.apelido));
+    }, [cartoes, parcelas, compras, selectedMonth]);
+
   const faturas = useMemo<{ atual: FaturaInfo, proxima: FaturaInfo }>(() => {
     const emptyFatura: FaturaInfo = { parcelas: [], total: 0, competencia: '', total_pago: 0, restante: 0, status: 'Aberta' };
 
@@ -210,33 +228,36 @@ const CartoesPage: React.FC<CartoesPageProps> = ({
   };
   
   const renderPurchaseItem = (item: typeof parcelasDoMes[0], isMobile = false) => {
-    const cartaoDaCompra = selectedView === 'all' ? cartoes.find(c => c.id === item.compra.cartao_id) : null;
+    const cartaoDaCompra = cartoes.find(c => c.id === item.compra.cartao_id);
     if(isMobile) {
         return (
-            <div key={item.parcela.id} className={`p-4 border-t border-gray-700 ${item.compra.estorno ? 'text-green-400' : ''}`}>
-                <div className="flex justify-between items-start">
-                    <div>
-                        <div className="flex items-center space-x-2 font-semibold text-white">{item.compra.estorno && <RefreshCcw size={14}/>}<span>{item.compra.descricao}</span></div>
-                        <div className="text-sm text-gray-400 mt-1">{item.categoria?.nome || 'N/A'}</div>
-                         {selectedView === 'all' && cartaoDaCompra && <div className="text-sm text-gray-400 mt-1 flex items-center space-x-2"><div className="w-1.5 h-3 rounded-full" style={{ backgroundColor: cartaoDaCompra?.cor || '#6b7280' }}></div><span>{cartaoDaCompra.apelido}</span></div>}
+            <div key={item.parcela.id} className={`relative border-t border-gray-700 ${item.compra.estorno ? 'text-green-400' : ''}`}>
+                <div className="absolute left-0 top-0 h-full w-1.5 rounded-r-sm" style={{ backgroundColor: cartaoDaCompra?.cor || 'transparent' }}></div>
+                <div className="p-4 pl-6">
+                    <div className="flex justify-between items-start">
+                        <div>
+                            <div className="flex items-center space-x-2 font-semibold text-white">{item.compra.estorno && <RefreshCcw size={14}/>}<span>{item.compra.descricao}</span></div>
+                            <div className="text-sm text-gray-400 mt-1">{item.categoria?.nome || 'N/A'}</div>
+                            {selectedView === 'all' && cartaoDaCompra && <div className="text-sm text-gray-400 mt-1 flex items-center space-x-2"><div className="w-1.5 h-3 rounded-full" style={{ backgroundColor: cartaoDaCompra?.cor || '#6b7280' }}></div><span>{cartaoDaCompra.apelido}</span></div>}
+                        </div>
+                        <div className="text-right ml-2">
+                            <div className="font-bold">{formatCurrency(item.parcela.valor_parcela)}</div>
+                            <div className="text-xs text-gray-400">{formatDate(item.compra.data_compra)}</div>
+                        </div>
                     </div>
-                    <div className="text-right ml-2">
-                        <div className="font-bold">{formatCurrency(item.parcela.valor_parcela)}</div>
-                        <div className="text-xs text-gray-400">{formatDate(item.compra.data_compra)}</div>
+                    <div className="flex justify-between items-center mt-2">
+                        <div className="text-xs text-gray-400">{item.parcela_fmt}</div>
+                        <div className="flex justify-center space-x-3">
+                            <button onClick={() => openModal('editar-compra-cartao', { compra: item.compra })} className="text-gray-400 hover:text-blue-400"><Pencil size={16}/></button>
+                            <button onClick={() => deleteCompraCartao(item.compra.id)} className="text-gray-400 hover:text-red-400"><Trash2 size={16}/></button>
+                        </div>
                     </div>
-                </div>
-                 <div className="flex justify-between items-center mt-2">
-                    <div className="text-xs text-gray-400">{item.parcela_fmt}</div>
-                     <div className="flex justify-center space-x-3">
-                        <button onClick={() => openModal('editar-compra-cartao', { compra: item.compra })} className="text-gray-400 hover:text-blue-400"><Pencil size={16}/></button>
-                        <button onClick={() => deleteCompraCartao(item.compra.id)} className="text-gray-400 hover:text-red-400"><Trash2 size={16}/></button>
-                     </div>
                 </div>
             </div>
         )
     }
     return (
-      <tr key={item.parcela.id} className={`border-t border-gray-700 hover:bg-gray-700/50 ${item.compra.estorno ? 'text-green-400' : ''}`}>
+      <tr key={item.parcela.id} className={`border-t border-gray-700 hover:bg-gray-700/50 ${item.compra.estorno ? 'text-green-400' : ''}`} style={{ borderLeft: `4px solid ${cartaoDaCompra?.cor || 'transparent'}` }}>
           <td className="p-3">{formatDate(item.compra.data_compra)}</td>
           {selectedView === 'all' && (<td className="p-3"><div className="flex justify-center items-center space-x-2"><div className="w-1.5 h-4 rounded-full" style={{ backgroundColor: cartaoDaCompra?.cor || '#6b7280' }}></div><span className="whitespace-nowrap">{cartaoDaCompra?.apelido || 'N/A'}</span></div></td>)}
           <td className="p-3 flex justify-center items-center space-x-2">{item.compra.estorno && <RefreshCcw size={14}/>}<span>{item.compra.descricao}</span></td>
@@ -254,13 +275,31 @@ const CartoesPage: React.FC<CartoesPageProps> = ({
   return (
     <div className="animate-fade-in flex flex-col h-full md:flex-row md:space-x-6">
         {/* Card Navigation */}
-        <div className="w-full md:w-64 flex-shrink-0 mb-6 md:mb-0">
+        <div className="hidden md:flex flex-col w-64 flex-shrink-0">
              {/* Desktop Sidebar */}
-             <div className="hidden md:flex bg-gray-800 rounded-lg flex-col p-3 h-full">
+             <div className="bg-gray-800 rounded-lg flex-col p-3 h-full flex">
                 <div className="flex-grow space-y-2 overflow-y-auto no-scrollbar">
-                    <button onClick={() => setSelectedView('all')} className={`w-full text-left p-3 rounded-lg flex items-center space-x-3 transition-colors ${selectedView === 'all' ? 'bg-green-500/80 text-white' : 'bg-gray-700/50 hover:bg-gray-700'}`}><Wallet size={20} /><span>Todos os Cartões</span></button>
+                    <div className={`w-full text-left rounded-lg flex justify-between items-center transition-colors relative overflow-hidden ${selectedView === 'all' ? 'bg-green-500/80 text-white' : 'bg-gray-700/50 hover:bg-gray-700'}`}>
+                        <div className="absolute left-0 top-0 h-full w-1.5" style={{ backgroundColor: '#10b981' }}></div>
+                        <button onClick={() => setSelectedView('all')} className="flex-grow p-3 pl-5 text-left">
+                            <span className="font-semibold block truncate">Todos os Cartões</span>
+                            <span className="text-sm">{formatCurrency(faturas.atual.total)}</span>
+                        </button>
+                    </div>
                     <hr className="border-gray-700" />
-                    {cartoes.sort((a,b) => a.apelido.localeCompare(b.apelido)).map(cartao => (<button key={cartao.id} onClick={() => setSelectedView(cartao.id)} className={`w-full text-left p-3 rounded-lg flex items-center space-x-3 transition-colors relative overflow-hidden ${selectedView === cartao.id ? 'bg-green-500/80 text-white' : 'bg-gray-700/50 hover:bg-gray-700'}`}><div className="absolute left-0 top-0 h-full w-1.5" style={{ backgroundColor: cartao.cor || '#6b7280' }}></div><CreditCard size={20} className="ml-2"/> <span>{cartao.apelido}</span></button>))}
+                    {cartoesComFatura.map(cartao => (
+                        <div key={cartao.id} className={`w-full rounded-lg flex justify-between items-center transition-colors relative overflow-hidden ${selectedView === cartao.id ? 'bg-green-500/80 text-white' : 'bg-gray-700/50 hover:bg-gray-700'}`}>
+                            <div className="absolute left-0 top-0 h-full w-1.5" style={{ backgroundColor: cartao.cor || '#6b7280' }}></div>
+                            <button onClick={() => setSelectedView(cartao.id)} className="flex-grow p-3 pl-5 text-left overflow-hidden">
+                               <span className="font-semibold block truncate">{cartao.apelido}</span>
+                               <span className="text-sm">{formatCurrency(cartao.faturaAtual)}</span>
+                            </button>
+                            <div className="flex flex-shrink-0 space-x-1 pr-3 z-10">
+                                <button onClick={(e) => { e.stopPropagation(); openModal('editar-cartao', { cartao }); }} className="p-1.5 rounded-full hover:bg-black/20" title="Editar Cartão"><Pencil size={16} /></button>
+                                <button onClick={(e) => { e.stopPropagation(); deleteCartao(cartao.id); }} className="p-1.5 rounded-full hover:bg-black/20" title="Excluir Cartão"><Trash2 size={16} /></button>
+                            </div>
+                        </div>
+                    ))}
                     {cartoes.length === 0 && <p className="text-gray-400 text-center py-4">Nenhum cartão cadastrado.</p>}
                 </div>
                 <div className="pt-3 mt-auto border-t border-gray-700/50"><button onClick={() => openModal('novo-cartao')} className="w-full text-center p-2 rounded-lg flex items-center justify-center space-x-2 transition-colors bg-gray-700/50 text-gray-300 hover:bg-gray-700 hover:text-white opacity-70 hover:opacity-100"><Plus size={16} /><span>Novo Cartão</span></button></div>
@@ -270,29 +309,54 @@ const CartoesPage: React.FC<CartoesPageProps> = ({
         {/* Main Content */}
         <div className="flex-1 flex flex-col overflow-hidden">
             <DatePeriodSelector selectedMonth={selectedMonth} onMonthChange={onMonthChange} />
+            
+             {/* Mobile Controls */}
+             <div className="md:hidden mt-6">
+                <MobileSelector
+                    allLabel={(
+                        <div className="flex items-center space-x-3">
+                            <div className="w-1.5 h-10 flex-shrink-0 rounded-full bg-green-500"></div>
+                            <div>
+                                <div className="font-semibold text-white">Todos os Cartões</div>
+                                <div className="text-sm text-gray-400">{formatCurrency(faturas.atual.total)}</div>
+                            </div>
+                        </div>
+                    )}
+                    options={cartoesComFatura.map(cartao => ({
+                        value: cartao.id,
+                        label: (
+                           <div className="flex justify-between items-center w-full">
+                                <div className="flex items-center space-x-3 overflow-hidden">
+                                    <div className="w-1.5 h-10 flex-shrink-0 rounded-full" style={{ backgroundColor: cartao.cor || 'transparent' }}></div>
+                                    <div className="overflow-hidden">
+                                        <div className="font-semibold text-white truncate">{cartao.apelido}</div>
+                                        <div className="text-sm text-gray-400">{formatCurrency(cartao.faturaAtual)}</div>
+                                    </div>
+                                </div>
+                                <div className="flex space-x-1 flex-shrink-0 pl-2 text-white">
+                                    <button onClick={(e) => { e.stopPropagation(); openModal('editar-cartao', { cartao }); }} className="p-2 rounded-full hover:bg-gray-600"><Pencil size={18} /></button>
+                                    <button onClick={(e) => { e.stopPropagation(); deleteCartao(cartao.id); }} className="p-2 rounded-full hover:bg-gray-600"><Trash2 size={18} /></button>
+                                </div>
+                            </div>
+                        )
+                    }))}
+                    value={selectedView}
+                    onChange={setSelectedView}
+                    onAddNew={() => openModal('novo-cartao')}
+                    addNewLabel="Adicionar novo cartão"
+                />
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 my-6">
                 <FaturaCard title="Fatura Atual" fatura={faturas.atual} faturaKey="atual" />
                 <FaturaCard title="Próxima Fatura" fatura={faturas.proxima} faturaKey="proxima" />
             </div>
             
-            <div className="md:hidden mb-4">
-                <MobileSelector
-                    allLabel="Todos os Cartões"
-                    options={cartoes.sort((a,b) => a.apelido.localeCompare(b.apelido)).map(cartao => ({
-                        value: cartao.id,
-                        label: cartao.apelido
-                    }))}
-                    value={selectedView}
-                    onChange={setSelectedView}
-                />
-            </div>
-
             <div className="bg-gray-800 rounded-lg p-4 flex-grow flex flex-col overflow-hidden">
                 <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
                 <h3 className="text-lg font-semibold">Histórico de Compras {selectedCartao ? `(${selectedCartao.apelido})` : '(Todos)'}</h3>
                 <div className="flex space-x-2">
                     <button onClick={() => openModal('nova-compra-cartao', { cartaoId: selectedView !== 'all' ? selectedView : undefined })} className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-3 rounded-lg flex items-center space-x-2 text-sm"> <ShoppingCart size={16}/><span>Nova Compra</span> </button>
-                    {selectedCartao && (<><button onClick={() => openModal('editar-cartao', { cartao: selectedCartao })} className="bg-gray-600 hover:bg-gray-500 text-white p-2 rounded-lg"><Pencil size={16} /></button><button onClick={() => deleteCartao(selectedCartao.id)} disabled={compras.some(c => c.cartao_id === selectedCartao.id)} className="bg-gray-600 hover:bg-red-500 text-white p-2 rounded-lg disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed"> <Trash2 size={16} /> </button></>)}
                 </div>
                 </div>
                 <div className="overflow-y-auto flex-grow">
@@ -311,14 +375,14 @@ const CartoesPage: React.FC<CartoesPageProps> = ({
       
         <Modal isOpen={isCardModalOpen} onClose={closeModal} title={editingCartao ? "Editar Cartão" : "Novo Cartão"}>
             <form onSubmit={handleCardSubmit} className="space-y-4">
-                <div> <label className="block text-sm font-medium text-gray-300 mb-1">Nome do Cartão</label> <input type="text" value={cardForm.apelido} onChange={e => setCardForm({...cardForm, apelido: e.target.value})} required className="w-full bg-gray-700 p-2 rounded"/> </div>
-                <div> <label className="block text-sm font-medium text-gray-300 mb-1">Bandeira</label> <select value={cardForm.bandeira} onChange={e => setCardForm({...cardForm, bandeira: e.target.value as BandeiraCartao})} required className="w-full bg-gray-700 p-2 rounded"> {Object.values(BandeiraCartao).map(b => <option key={b} value={b}>{b}</option>)} </select> </div>
+                <div> <label className="block text-sm font-medium text-gray-300 mb-1">Nome do Cartão</label> <input type="text" value={cardForm.apelido} onChange={e => setCardForm({...cardForm, apelido: e.target.value})} required className="w-full bg-gray-700 p-2 rounded-lg"/> </div>
+                <div className="relative"> <label className="block text-sm font-medium text-gray-300 mb-1">Bandeira</label> <select value={cardForm.bandeira} onChange={e => setCardForm({...cardForm, bandeira: e.target.value as BandeiraCartao})} required className="w-full bg-gray-700 p-2 pl-3 pr-10 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-green-500"> {Object.values(BandeiraCartao).map(b => <option key={b} value={b}>{b}</option>)} </select> <ChevronDown className="absolute right-3 top-9 pointer-events-none text-gray-400" size={18}/> </div>
                 <div className="grid grid-cols-2 gap-4">
-                    <div> <label className="block text-sm font-medium text-gray-300 mb-1">Dia de Vencimento</label> <input type="number" min="1" max="31" value={cardForm.dia_vencimento} onChange={e => setCardForm({...cardForm, dia_vencimento: Number(e.target.value)})} required className="w-full bg-gray-700 p-2 rounded"/> </div>
-                    <div> <label className="block text-sm font-medium text-gray-300 mb-1">Dia de Fechamento</label> <input type="number" min="1" max="28" value={cardForm.dia_fechamento} onChange={e => setCardForm({...cardForm, dia_fechamento: Number(e.target.value)})} required className="w-full bg-gray-700 p-2 rounded"/> </div>
+                    <div> <label className="block text-sm font-medium text-gray-300 mb-1">Dia de Vencimento</label> <input type="number" min="1" max="31" value={cardForm.dia_vencimento} onChange={e => setCardForm({...cardForm, dia_vencimento: Number(e.target.value)})} required className="w-full bg-gray-700 p-2 rounded-lg"/> </div>
+                    <div> <label className="block text-sm font-medium text-gray-300 mb-1">Dia de Fechamento</label> <input type="number" min="1" max="28" value={cardForm.dia_fechamento} onChange={e => setCardForm({...cardForm, dia_fechamento: Number(e.target.value)})} required className="w-full bg-gray-700 p-2 rounded-lg"/> </div>
                 </div>
-                <div> <label className="block text-sm font-medium text-gray-300 mb-1">Limite Total (opcional)</label> <CurrencyInput value={cardForm.limite} onValueChange={value => setCardForm({...cardForm, limite: value})} className="w-full bg-gray-700 p-2 rounded" placeholder="R$ 0,00" /> </div>
-                <div> <label className="block text-sm font-medium text-gray-300 mb-1">Conta Associada (p/ pagamento)</label> <select value={cardForm.conta_id_padrao} onChange={e => setCardForm({...cardForm, conta_id_padrao: e.target.value})} className="w-full bg-gray-700 p-2 rounded"> <option value="">Nenhuma</option> {contas.filter(c => c.ativo).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)} </select> </div>
+                <div> <label className="block text-sm font-medium text-gray-300 mb-1">Limite Total (opcional)</label> <CurrencyInput value={cardForm.limite} onValueChange={value => setCardForm({...cardForm, limite: value})} className="w-full bg-gray-700 p-2 rounded-lg" placeholder="R$ 0,00" /> </div>
+                <div className="relative"> <label className="block text-sm font-medium text-gray-300 mb-1">Conta Associada (p/ pagamento)</label> <select value={cardForm.conta_id_padrao} onChange={e => setCardForm({...cardForm, conta_id_padrao: e.target.value})} className="w-full bg-gray-700 p-2 pl-3 pr-10 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-green-500"> <option value="">Nenhuma</option> {contas.filter(c => c.ativo).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)} </select> <ChevronDown className="absolute right-3 top-9 pointer-events-none text-gray-400" size={18}/> </div>
                 <div>
                     <label className="block text-sm font-medium text-gray-300 mb-1">Cor Identificadora</label>
                     <div className="flex flex-wrap gap-3">
@@ -336,12 +400,15 @@ const CartoesPage: React.FC<CartoesPageProps> = ({
               <p className="text-red-400">Restante: <span className="font-bold">{formatCurrency(faturas.atual.restante)}</span></p>
             </div>
             <form onSubmit={handlePagamentoSubmit} className="space-y-4">
-                <input type="date" value={pagamentoForm.data} onChange={e => setPagamentoForm({...pagamentoForm, data: e.target.value})} required className="w-full bg-gray-700 p-2 rounded"/>
-                <select value={pagamentoForm.conta_id} onChange={e => setPagamentoForm({...pagamentoForm, conta_id: e.target.value})} required className="w-full bg-gray-700 p-2 rounded">
-                    <option value="" disabled>Selecione a conta...</option>
-                    {contas.filter(c => c.ativo).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
-                </select>
-                <CurrencyInput placeholder="Valor do Pagamento (R$)" value={pagamentoForm.valor} onValueChange={value => setPagamentoForm({...pagamentoForm, valor: value})} required className="w-full bg-gray-700 p-2 rounded"/>
+                <input type="date" value={pagamentoForm.data} onChange={e => setPagamentoForm({...pagamentoForm, data: e.target.value})} required className="w-full bg-gray-700 p-2 rounded-lg"/>
+                <div className="relative">
+                    <select value={pagamentoForm.conta_id} onChange={e => setPagamentoForm({...pagamentoForm, conta_id: e.target.value})} required className="w-full bg-gray-700 p-2 pl-3 pr-10 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-green-500">
+                        <option value="" disabled>Selecione a conta...</option>
+                        {contas.filter(c => c.ativo).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                    </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400" size={18}/>
+                </div>
+                <CurrencyInput placeholder="Valor do Pagamento (R$)" value={pagamentoForm.valor} onValueChange={value => setPagamentoForm({...pagamentoForm, valor: value})} required className="w-full bg-gray-700 p-2 rounded-lg"/>
                 <div className="pt-4 flex justify-end space-x-3">
                     <button type="button" onClick={closeModal} className="bg-gray-600 px-4 py-2 rounded">Cancelar</button>
                     <button type="submit" className="bg-green-500 px-4 py-2 rounded">Confirmar Pagamento</button>

@@ -57,10 +57,10 @@ const TransacoesRecentesCard: React.FC<TransacoesRecentesCardProps> = ({ items, 
     return (
         <div className="bg-gray-800 p-4 rounded-2xl h-full flex flex-col">
             <h3 className="text-xl font-semibold mb-4 text-white">Transações Recentes</h3>
-            <div className="flex-grow overflow-y-auto space-y-3 no-scrollbar pr-2 min-h-[300px]">
+            <div className="flex-grow overflow-y-auto space-y-2 no-scrollbar pr-2 min-h-[280px]">
                 {items.length > 0 ? (
                     items.map(item => (
-                        <div key={`${item.id}-${item.kind}`} onClick={() => handleTransactionClick(item)} className="flex items-center space-x-4 p-2.5 rounded-lg hover:bg-gray-700/50 cursor-pointer transition-colors">
+                        <div key={`${item.id}-${item.kind}`} onClick={() => handleTransactionClick(item)} className="flex items-center space-x-4 p-2 rounded-lg hover:bg-gray-700/50 cursor-pointer transition-colors">
                             <div className="flex-1">
                                 <div className="flex justify-between items-center">
                                     <p className="font-semibold text-white capitalize">{item.titulo}</p>

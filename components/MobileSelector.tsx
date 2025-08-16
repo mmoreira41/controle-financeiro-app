@@ -1,24 +1,27 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Plus } from 'lucide-react';
 
 interface Option {
   value: string;
-  label: string;
+  label: React.ReactNode;
 }
 
 interface MobileSelectorProps {
   options: Option[];
   value: string;
   onChange: (value: string) => void;
-  allLabel: string;
+  allLabel: React.ReactNode;
   allValue?: string;
+  onAddNew?: () => void;
+  addNewLabel?: string;
 }
 
-const MobileSelector: React.FC<MobileSelectorProps> = ({ options, value, onChange, allLabel, allValue = 'all' }) => {
+const MobileSelector: React.FC<MobileSelectorProps> = ({ options, value, onChange, allLabel, allValue = 'all', onAddNew, addNewLabel }) => {
   const [isOpen, setIsOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
-  const selectedOption = options.find(opt => opt.value === value) || { value: allValue, label: allLabel };
+  const selectedOption = options.find(opt => opt.value === value);
+  const displayLabel = selectedOption ? selectedOption.label : allLabel;
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -35,14 +38,21 @@ const MobileSelector: React.FC<MobileSelectorProps> = ({ options, value, onChang
     setIsOpen(false);
   };
 
+  const handleAddNew = () => {
+    if(onAddNew) {
+        onAddNew();
+    }
+    setIsOpen(false);
+  }
+
   return (
     <div className="relative md:hidden" ref={wrapperRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="w-full flex justify-between items-center bg-gray-700/80 hover:bg-gray-700 text-white font-semibold py-3 px-4 rounded-lg shadow-md transition-colors"
       >
-        <span>{selectedOption.label}</span>
-        <ChevronDown size={20} className={`transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} />
+        <div className="text-left">{displayLabel}</div>
+        <ChevronDown size={20} className={`transition-transform duration-300 ${isOpen ? 'rotate-180' : ''} flex-shrink-0 ml-2`} />
       </button>
 
       {isOpen && (
@@ -60,12 +70,23 @@ const MobileSelector: React.FC<MobileSelectorProps> = ({ options, value, onChang
               <li key={option.value}>
                 <button
                   onClick={() => handleSelect(option.value)}
-                  className={`w-full text-left px-4 py-3 hover:bg-gray-700 transition-colors ${value === option.value ? 'text-green-400' : 'text-gray-200'}`}
+                  className={`w-full text-left px-4 py-3 hover:bg-gray-700 transition-colors ${value === option.value ? 'bg-gray-700/50' : 'text-gray-200'}`}
                 >
                   {option.label}
                 </button>
               </li>
             ))}
+            {onAddNew && addNewLabel && (
+              <li className="border-t border-gray-700/50">
+                <button
+                  onClick={handleAddNew}
+                  className="w-full text-left px-4 py-3 text-green-400 hover:bg-green-500/20 transition-colors flex items-center space-x-3 font-semibold"
+                >
+                  <Plus size={18} />
+                  <span>{addNewLabel}</span>
+                </button>
+              </li>
+            )}
           </ul>
         </div>
       )}

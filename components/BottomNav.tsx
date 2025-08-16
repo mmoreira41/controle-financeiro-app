@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, ShoppingCart, DollarSign } from 'lucide-react';
+import { Plus, ShoppingCart, DollarSign, ArrowUp, ArrowDown } from 'lucide-react';
 import { Page } from '../types';
 import { NAV_ITEMS } from '../constants';
 
@@ -34,8 +34,8 @@ const BottomNav: React.FC<BottomNavProps> = ({ currentPage, setCurrentPage, onNe
   }, [isFabOpen]);
 
   const fabActions = [
-    { label: 'Compra no Cartão', icon: <ShoppingCart size={20} />, action: onNewCardPurchase, disabled: !hasAnyCard },
     { label: 'Nova Transação', icon: <DollarSign size={20} />, action: onNewTransaction, disabled: !hasAnyAccount },
+    { label: 'Compra no Cartão', icon: <ShoppingCart size={20} />, action: onNewCardPurchase, disabled: !hasAnyCard },
   ];
   
   return (
@@ -44,8 +44,12 @@ const BottomNav: React.FC<BottomNavProps> = ({ currentPage, setCurrentPage, onNe
       <nav className="md:hidden fixed bottom-0 left-0 right-0 h-[calc(4.5rem+env(safe-area-inset-bottom))] bg-gray-800/80 backdrop-blur-sm border-t border-gray-700/50 z-40">
         <div className={`absolute bottom-[calc(5.5rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 w-full flex justify-center items-center gap-4 transition-all duration-300 ${isFabOpen ? 'opacity-100' : 'opacity-0 pointer-events-none -translate-y-2'}`}>
           {fabActions.map(action => (
-            <button key={action.label} onClick={() => { action.action(); setFabOpen(false); }} disabled={action.disabled} title={action.label} className="bg-gray-700 hover:bg-gray-600 text-white w-14 h-14 rounded-full flex items-center justify-center shadow-lg disabled:bg-gray-600 disabled:opacity-50">
+            <button key={action.label} onClick={() => { action.action(); setFabOpen(false); }} disabled={action.disabled} title={action.label} className="bg-gray-700 hover:bg-gray-600 text-white w-14 h-14 rounded-full flex items-center justify-center shadow-lg disabled:bg-gray-600 disabled:opacity-50 relative">
               {action.icon}
+              <div className="absolute bottom-1 right-1 flex bg-gray-900/50 p-0.5 rounded-full backdrop-blur-sm">
+                <ArrowUp size={8} className="text-green-400" />
+                <ArrowDown size={8} className="text-red-400" />
+              </div>
             </button>
           ))}
         </div>
@@ -79,8 +83,12 @@ const BottomNav: React.FC<BottomNavProps> = ({ currentPage, setCurrentPage, onNe
         <div className="flex flex-col items-center">
             <div className={`flex flex-col items-center gap-4 mb-4 transition-all duration-300 ${isFabOpen ? 'opacity-100' : 'opacity-0 pointer-events-none -translate-y-2'}`}>
               {fabActions.map(action => (
-                <button key={action.label} onClick={() => { action.action(); setFabOpen(false); }} disabled={action.disabled} title={action.label} className="bg-gray-700 hover:bg-gray-600 text-white w-14 h-14 rounded-full flex items-center justify-center shadow-lg disabled:bg-gray-600 disabled:opacity-50">
+                <button key={action.label} onClick={() => { action.action(); setFabOpen(false); }} disabled={action.disabled} title={action.label} className="bg-gray-700 hover:bg-gray-600 text-white w-14 h-14 rounded-full flex items-center justify-center shadow-lg disabled:bg-gray-600 disabled:opacity-50 relative">
                   {action.icon}
+                  <div className="absolute bottom-1 right-1 flex bg-gray-900/50 p-0.5 rounded-full backdrop-blur-sm">
+                    <ArrowUp size={8} className="text-green-400" />
+                    <ArrowDown size={8} className="text-red-400" />
+                  </div>
                 </button>
               ))}
             </div>

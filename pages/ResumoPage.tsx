@@ -1,10 +1,12 @@
 import React, { useMemo, useCallback } from 'react';
-import { TransacaoBanco, Categoria, TipoCategoria, ContaBancaria, Cartao, CompraCartao, ParcelaCartao, Page, NavigationState } from '../types';
+import { TransacaoBanco, Categoria, TipoCategoria, ContaBancaria, Cartao, CompraCartao, ParcelaCartao, Page, NavigationState, Settings } from '../types';
 import { calculateSaldo, formatCurrency } from '../utils/format';
 import { Page as PageType } from '../types';
 import SummaryCard from '../components/SummaryCard';
 import TransacoesRecentesCard from '../components/TransacoesRecentesCard';
 import ChartContainer from '../components/ChartContainer';
+import DatePeriodSelector from '../components/DatePeriodSelector';
+import CardAnalysisCard from '../components/CardAnalysisCard';
 import { ArrowUp, ArrowDown, CreditCard, PiggyBank } from 'lucide-react';
 
 interface ResumoPageProps {
@@ -16,10 +18,16 @@ interface ResumoPageProps {
   categorias: Categoria[];
   setCurrentPage: (page: PageType, state?: NavigationState | null) => void;
   openModal: (modal: string, data?: any) => void;
+  selectedMonth: string;
+  onMonthChange: (month: string) => void;
+  settings: Settings;
 }
 
-export default function ResumoPage({ contas, transacoes, cartoes, compras, parcelas, categorias, setCurrentPage, openModal }: ResumoPageProps) {
-  const selectedMonth = useMemo(() => new Date().toISOString().slice(0, 7), []);
+export default function ResumoPage({ 
+    contas, transacoes, cartoes, compras, parcelas, categorias, 
+    setCurrentPage, openModal, selectedMonth, onMonthChange, settings 
+}: ResumoPageProps) {
+    
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
   const getMonthData = useCallback((month: string) => {
@@ -128,59 +136,21 @@ export default function ResumoPage({ contas, transacoes, cartoes, compras, parce
     return combined;
   }, [transacoes, compras, categorias, contas, cartoes]);
 
-  const despesasPorCategoria = useMemo(() => {
-    const gastos: Record<string, number> = {};
-    const categoriaMap = new Map(categorias.map(c => [c.id, c.nome]));
-
-    transacoes
-      .filter(t => t.realizado && t.tipo === TipoCategoria.Saida && t.data.startsWith(selectedMonth))
-      .forEach(t => {
-        const nomeCat = categoriaMap.get(t.categoria_id) || 'Desconhecido';
-        gastos[nomeCat] = (gastos[nomeCat] || 0) + t.valor;
-      });
-
-    parcelas
-      .filter(p => p.competencia_fatura === selectedMonth)
-      .forEach(p => {
-        const compra = compras.find(c => c.id === p.compra_id && !c.estorno);
-        if (compra) {
-          const nomeCat = categoriaMap.get(compra.categoria_id) || 'Desconhecido';
-          gastos[nomeCat] = (gastos[nomeCat] || 0) + p.valor_parcela;
-        }
-      });
-      
-    return Object.entries(gastos).map(([categoria, valor]) => ({ categoria, valor }));
-  }, [transacoes, compras, parcelas, categorias, selectedMonth]);
-
-  const historicoMensal = useMemo(() => {
-    const data = [];
-    const date = new Date(`${selectedMonth}-15T12:00:00Z`);
-    for (let i = 4; i >= 0; i--) {
-      const targetDate = new Date(date);
-      targetDate.setUTCMonth(targetDate.getUTCMonth() - i);
-      const monthStr = targetDate.toISOString().slice(0, 7);
-      const monthData = getMonthData(monthStr);
-      data.push({
-        mes: targetDate.toLocaleDateString('pt-BR', { month: 'short' }),
-        entradas: monthData.entradas,
-        saidas: monthData.saidas,
-        investimentos: monthData.investimentos,
-      });
-    }
-    return data;
-  }, [selectedMonth, getMonthData]);
-
   return (
     <div className="animate-fade-in space-y-6">
-      <div className="bg-gray-800 rounded-2xl p-6 text-center">
+      <div className="flex justify-center">
+        <DatePeriodSelector selectedMonth={selectedMonth} onMonthChange={onMonthChange} />
+      </div>
+
+      <button onClick={() => setCurrentPage('contas-extrato')} className="w-full bg-gray-800 rounded-2xl p-4 text-left hover:bg-gray-700/50 transition-colors">
         <p className="text-gray-400 text-sm">Saldo Total Consolidado</p>
-        <p className="text-4xl font-bold text-white mt-1">{formatCurrency(saldoBancario)}</p>
-        <div className="mt-2 text-sm bg-gray-700/50 inline-block px-3 py-1 rounded-full">
-            <span className="text-gray-400">Saldo projetado: </span>
+        <p className="text-3xl font-bold text-white mt-1">{formatCurrency(saldoBancario)}</p>
+        <div className="mt-2 text-xs bg-gray-700/50 inline-block px-3 py-1 rounded-full">
+            <span className="text-gray-400">Projetado: </span>
             <span className="font-semibold text-white">{formatCurrency(saldoProjetado)}</span>
             <span className="text-gray-400">{projectionDateString}</span>
         </div>
-      </div>
+      </button>
 
       <div className="grid grid-cols-2 gap-4">
         <SummaryCard 
@@ -188,12 +158,14 @@ export default function ResumoPage({ contas, transacoes, cartoes, compras, parce
           value={currentMonthData.entradas}
           change={calculateChange(currentMonthData.entradas, previousMonthData.entradas)}
           icon={<ArrowUp size={18} className="text-green-400" />}
+          showPercentageChange={settings.showPercentageChange}
         />
         <SummaryCard 
           title="Saídas do Mês"
           value={currentMonthData.saidas}
           change={calculateChange(currentMonthData.saidas, previousMonthData.saidas)}
           icon={<ArrowDown size={18} className="text-red-400" />}
+          showPercentageChange={settings.showPercentageChange}
         />
         <SummaryCard 
           title="Fatura do Cartão"
@@ -201,6 +173,7 @@ export default function ResumoPage({ contas, transacoes, cartoes, compras, parce
           change={calculateChange(currentMonthData.faturaCartao, previousMonthData.faturaCartao)}
           icon={<CreditCard size={18} className="text-purple-400" />}
           onClick={() => setCurrentPage('cartoes')}
+          showPercentageChange={settings.showPercentageChange}
         />
         <SummaryCard 
           title="Total Investido"
@@ -208,6 +181,7 @@ export default function ResumoPage({ contas, transacoes, cartoes, compras, parce
           change={calculateChange(currentMonthData.totalInvestido, previousMonthData.totalInvestido)}
           icon={<PiggyBank size={18} className="text-blue-400" />}
           onClick={() => setCurrentPage('investimentos')}
+          showPercentageChange={settings.showPercentageChange}
         />
       </div>
 
@@ -218,9 +192,20 @@ export default function ResumoPage({ contas, transacoes, cartoes, compras, parce
       />
       
       <ChartContainer 
-        despesasData={despesasPorCategoria}
-        evolucaoData={historicoMensal}
+        transacoes={transacoes}
+        compras={compras}
+        parcelas={parcelas}
+        categorias={categorias}
+        currentMonth={selectedMonth}
       />
+
+      <CardAnalysisCard
+        compras={compras}
+        parcelas={parcelas}
+        categorias={categorias}
+        cartoes={cartoes}
+        currentMonth={selectedMonth}
+       />
     </div>
   );
 }

@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Categoria, TransacaoBanco, TipoCategoria, CompraCartao, ModalState, ParcelaCartao } from '../types';
 import Modal from '../components/Modal';
 import { getCategoryIcon } from '../constants';
-import { Plus, Pencil, Trash2, Lock } from 'lucide-react';
+import { Plus, Pencil, Trash2, Lock, ChevronDown } from 'lucide-react';
 import DatePeriodSelector from '../components/DatePeriodSelector';
 import CurrencyInput from '../components/CurrencyInput';
 import { formatCurrency } from '../utils/format';
@@ -198,7 +198,7 @@ const CategoriasPage: React.FC<CategoriasPageProps> = ({
               <label htmlFor="nome-cat" className="block text-sm font-medium text-gray-300 mb-1">Nome da Categoria</label>
               <input type="text" id="nome-cat" value={nome} onChange={(e) => setNome(e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-green-500" required />
             </div>
-            <div>
+            <div className="relative">
               <label htmlFor="tipo-cat" className="block text-sm font-medium text-gray-300 mb-1">Tipo</label>
               {editingCategoria ? (
                 <input
@@ -209,9 +209,12 @@ const CategoriasPage: React.FC<CategoriasPageProps> = ({
                   className="w-full bg-gray-600 border border-gray-600 rounded-lg px-3 py-2 text-gray-300 cursor-not-allowed focus:outline-none"
                 />
               ) : (
-                <select id="tipo-cat" value={tipo} onChange={(e) => setTipo(e.target.value as TipoCategoria)} className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-green-500">
-                  {Object.values(TipoCategoria).filter(t => t !== TipoCategoria.Estorno).map(val => ( <option key={val} value={val}>{val}</option>))}
-                </select>
+                <>
+                  <select id="tipo-cat" value={tipo} onChange={(e) => setTipo(e.target.value as TipoCategoria)} className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 pl-3 pr-10 text-white focus:outline-none focus:ring-2 focus:ring-green-500 appearance-none">
+                    {Object.values(TipoCategoria).filter(t => t !== TipoCategoria.Estorno).map(val => ( <option key={val} value={val}>{val}</option>))}
+                  </select>
+                  <ChevronDown className="absolute right-3 top-[calc(50%+8px)] -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
+                </>
               )}
             </div>
             {tipo === TipoCategoria.Saida && (

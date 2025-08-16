@@ -66,7 +66,7 @@ const SliderInput: React.FC<SliderInputProps> = ({ label, value, onChange, min, 
 };
 
 
-const SimuladorAposentadoria: React.FC = () => {
+const PodeApagar: React.FC = () => {
     const [valorInicial, setValorInicial] = useState('100000'); // R$ 1000.00
     const [aporteMensal, setAporteMensal] = useState('50000');   // R$ 500.00
     const [taxaAnual, setTaxaAnual] = useState('8');           // 8%
@@ -174,4 +174,4 @@ const SimuladorAposentadoria: React.FC = () => {
     );
 };
 
-export default SimuladorAposentadoria;
+export default PodeApagar;
