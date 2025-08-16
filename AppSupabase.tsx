@@ -16,6 +16,8 @@ import PerfilPage from './pages/PerfilPage';
 import CalculadoraJurosCompostosPage from './pages/CalculadoraJurosCompostosPage';
 import CalculadoraReservaEmergenciaPage from './pages/CalculadoraReservaEmergenciaPage';
 import Toast from './components/Toast';
+import Modal from './components/Modal';
+import CurrencyInput from './components/CurrencyInput';
 
 import { Page, ModalState, NavigationState, TipoCategoria } from './types';
 
@@ -38,6 +40,17 @@ const AppSupabase: React.FC = () => {
   const [parcelas] = useState([]);
   const [objetivos] = useState([]);
   const [profilePicture, setProfilePicture] = useState<string | null>(null);
+
+  // Estado para nova transação
+  const [transacaoForm, setTransacaoForm] = useState({
+    conta_id: '',
+    valor: '',
+    categoria_id: '',
+    tipo: TipoCategoria.Saida,
+    descricao: '',
+    data: new Date().toISOString().split('T')[0],
+    realizado: true
+  });
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setToast({ message, type });
@@ -73,6 +86,29 @@ const AppSupabase: React.FC = () => {
       </div>
     );
   }
+
+  // Wrapper functions for compatibility with page interfaces
+  const addContaWrapper = async (contaData: { nome: string; saldo_inicial: number; ativo: boolean; data_inicial: string; }) => {
+    return await addConta(contaData);
+  };
+
+  const updateContaWrapper = async (conta: Omit<ContaBancaria, 'saldo_inicial'>, novoSaldoInicial: number, novaDataInicial: string) => {
+    const success = await updateConta(conta.id, {
+      nome: conta.nome,
+      ativo: conta.ativo,
+      saldo_inicial: novoSaldoInicial,
+      data_inicial: novaDataInicial
+    });
+    if (success) {
+      showToast('Conta atualizada com sucesso!', 'success');
+    } else {
+      showToast('Erro ao atualizar conta', 'error');
+    }
+  };
+
+  const deleteContaWrapper = async (id: string) => {
+    await deleteConta(id);
+  };
 
   // Funções de compatibilidade (implementar depois)
   const addCategoria = async (categoria: any) => {
@@ -127,6 +163,49 @@ const AppSupabase: React.FC = () => {
     return true;
   };
 
+  // Função para criar nova transação
+  const handleTransacaoSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!transacaoForm.conta_id || !transacaoForm.categoria_id || !transacaoForm.valor || !transacaoForm.descricao) {
+      showToast('Preencha todos os campos obrigatórios', 'error');
+      return;
+    }
+
+    const valorNumerico = parseFloat(transacaoForm.valor) / 100;
+    
+    try {
+      const novaTransacao = await addTransacao({
+        conta_id: transacaoForm.conta_id,
+        data: transacaoForm.data,
+        valor: valorNumerico,
+        categoria_id: transacaoForm.categoria_id,
+        tipo: transacaoForm.tipo,
+        descricao: transacaoForm.descricao,
+        previsto: !transacaoForm.realizado,
+        realizado: transacaoForm.realizado
+      });
+
+      if (novaTransacao) {
+        showToast('Transação criada com sucesso!', 'success');
+        closeModal();
+        // Reset form
+        setTransacaoForm({
+          conta_id: '',
+          valor: '',
+          categoria_id: '',
+          tipo: TipoCategoria.Saida,
+          descricao: '',
+          data: new Date().toISOString().split('T')[0],
+          realizado: true
+        });
+      }
+    } catch (error) {
+      console.error('Erro ao criar transação:', error);
+      showToast('Erro ao criar transação', 'error');
+    }
+  };
+
   // Renderizar página atual
   const renderPage = () => {
     switch (currentPage) {
@@ -150,9 +229,9 @@ const AppSupabase: React.FC = () => {
             contas={contas}
             transacoes={transacoes}
             categorias={categorias}
-            addConta={addConta}
-            updateConta={updateConta}
-            deleteConta={deleteConta}
+            addConta={addContaWrapper}
+            updateConta={updateContaWrapper}
+            deleteConta={deleteContaWrapper}
             deleteTransacao={deleteTransacao}
             deleteTransacoes={deleteTransacoes}
             updateTransacoesCategoria={updateTransacoesCategoria}
@@ -286,6 +365,124 @@ const AppSupabase: React.FC = () => {
       />
 
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+
+      {/* Modal Nova Transação */}
+      <Modal 
+        isOpen={modalState.modal === 'nova-transacao'} 
+        onClose={closeModal} 
+        title="Nova Transação"
+      >
+        <form onSubmit={handleTransacaoSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1">Conta</label>
+            <select
+              value={transacaoForm.conta_id}
+              onChange={(e) => setTransacaoForm({...transacaoForm, conta_id: e.target.value})}
+              required
+              className="w-full bg-gray-700 p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+            >
+              <option value="">Selecione uma conta</option>
+              {contas.filter(c => c.ativo).map(conta => (
+                <option key={conta.id} value={conta.id}>{conta.nome}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Tipo</label>
+              <select
+                value={transacaoForm.tipo}
+                onChange={(e) => setTransacaoForm({...transacaoForm, tipo: e.target.value as TipoCategoria})}
+                className="w-full bg-gray-700 p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+              >
+                <option value={TipoCategoria.Entrada}>Entrada</option>
+                <option value={TipoCategoria.Saida}>Saída</option>
+                <option value={TipoCategoria.Investimento}>Investimento</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Valor</label>
+              <CurrencyInput
+                value={transacaoForm.valor}
+                onValueChange={(v) => setTransacaoForm({...transacaoForm, valor: v})}
+                placeholder="R$ 0,00"
+                required
+                className="w-full bg-gray-700 p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1">Categoria</label>
+            <select
+              value={transacaoForm.categoria_id}
+              onChange={(e) => setTransacaoForm({...transacaoForm, categoria_id: e.target.value})}
+              required
+              className="w-full bg-gray-700 p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+            >
+              <option value="">Selecione uma categoria</option>
+              {categorias
+                .filter(c => c.tipo === transacaoForm.tipo && !c.sistema)
+                .map(categoria => (
+                <option key={categoria.id} value={categoria.id}>{categoria.nome}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1">Descrição</label>
+            <input
+              type="text"
+              value={transacaoForm.descricao}
+              onChange={(e) => setTransacaoForm({...transacaoForm, descricao: e.target.value})}
+              placeholder="Descrição da transação"
+              required
+              className="w-full bg-gray-700 p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Data</label>
+              <input
+                type="date"
+                value={transacaoForm.data}
+                onChange={(e) => setTransacaoForm({...transacaoForm, data: e.target.value})}
+                required
+                className="w-full bg-gray-700 p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+            </div>
+            <div className="flex items-center justify-center">
+              <label className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  checked={transacaoForm.realizado}
+                  onChange={(e) => setTransacaoForm({...transacaoForm, realizado: e.target.checked})}
+                  className="h-4 w-4 rounded bg-gray-700 border-gray-600 text-green-500 focus:ring-offset-gray-800 focus:ring-green-500"
+                />
+                <span className="text-gray-300">Realizado</span>
+              </label>
+            </div>
+          </div>
+
+          <div className="flex justify-end space-x-3 pt-4">
+            <button
+              type="button"
+              onClick={closeModal}
+              className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg"
+            >
+              Criar Transação
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 };
