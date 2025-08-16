@@ -1,6 +1,4 @@
-
 import React, { useRef } from 'react';
-import PageHeader from '../components/PageHeader';
 import { Download, Upload, Trash2, ShieldAlert } from 'lucide-react';
 
 interface ConfiguracoesPageProps {
@@ -27,11 +25,6 @@ const ConfiguracoesPage: React.FC<ConfiguracoesPageProps> = ({ handleDeleteAllDa
 
     return (
         <div className="animate-fade-in">
-            <PageHeader
-                title="Configurações"
-                description="Gerencie seus dados e personalize o aplicativo."
-            />
-            
             <div className="space-y-8 max-w-2xl mx-auto">
                 {/* Data Management Card */}
                 <div className="bg-gray-800 rounded-lg p-6">

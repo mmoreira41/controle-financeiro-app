@@ -1,23 +1,24 @@
-
-
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { AlertTriangle, Info } from 'lucide-react';
 
 import Sidebar from './components/Sidebar';
+import Header from './components/Header';
+import BottomNav from './components/BottomNav';
 import ContasExtratoPage from './pages/ContasExtratoPage';
-import CategoriasPage from './pages/CategoriasPage';
 import FluxoCaixaPage from './pages/FluxoCaixaPage';
 import CartoesPage from './pages/CartoesPage';
 import ResumoPage from './pages/ResumoPage';
-import MetasPage from './pages/MetasPage';
-import ConfiguracoesPage from './pages/ConfiguracoesPage';
+import InvestimentosPage from './pages/InvestimentosPage';
+import PerfilPage from './pages/PerfilPage';
+import CalculadoraJurosCompostosPage from './pages/CalculadoraJurosCompostosPage';
+import CalculadoraReservaEmergenciaPage from './pages/CalculadoraReservaEmergenciaPage';
 import Toast from './components/Toast';
 import ConfirmationModal, { ConfirmationModalData } from './components/ConfirmationModal';
-import GlobalFAB from './components/GlobalFAB';
 import Modal from './components/Modal';
 import CurrencyInput from './components/CurrencyInput';
+import ImageCropModal from './components/ImageCropModal';
 
-import { Page, ContaBancaria, TransacaoBanco, Cartao, Categoria, CompraCartao, ParcelaCartao, TipoCategoria, ModalState, NavigationState, Meta } from './types';
+import { Page, ContaBancaria, TransacaoBanco, Cartao, Categoria, CompraCartao, ParcelaCartao, TipoCategoria, ModalState, NavigationState, ObjetivoInvestimento } from './types';
 import { CATEGORIAS_PADRAO } from './constants';
 import { formatCurrency, computeFirstCompetency, addMonths, ymToISOFirstDay, splitInstallments, parseBrDate, parseCurrency, formatDate, calculateSaldo } from './utils/format';
 
@@ -34,6 +35,31 @@ type CsvImportState = {
     detectedFinalBalance?: number;
 } | null;
 
+// Custom hook for persisting state to localStorage
+function usePersistentState<T>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
+    const [state, setState] = useState<T>(() => {
+        try {
+            const item = window.localStorage.getItem(key);
+            return item ? JSON.parse(item) : initialValue;
+        } catch (error) {
+            console.error(`Error reading localStorage key “${key}”:`, error);
+            return initialValue;
+        }
+    });
+
+    useEffect(() => {
+        try {
+            const serializedState = JSON.stringify(state);
+            window.localStorage.setItem(key, serializedState);
+        } catch (error) {
+            console.error(`Error setting localStorage key “${key}”:`, error);
+        }
+    }, [key, state]);
+
+    return [state, setState];
+}
+
+
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<Page>('resumo');
   const [selectedViewId, setSelectedViewId] = useState<'all' | string>('all');
@@ -47,13 +73,13 @@ const App: React.FC = () => {
   
   const getTodayString = () => new Date().toISOString().split('T')[0];
 
-  // Mock Data
-  const [contas, setContas] = useState<ContaBancaria[]>([
+  // Mock Data (used only for the first load if localStorage is empty)
+  const initialContas: ContaBancaria[] = [
     { id: 'b8d8e5e6-c5a4-4c4f-9b1d-2f0a1c2b3d4e', nome: 'Conta Corrente Nu', saldo_inicial: 0, data_inicial: '2024-07-01', ativo: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
     { id: 'a1b2c3d4-e5f6-7890-1234-567890abcdef', nome: 'Poupança Itaú', saldo_inicial: 0, data_inicial: '2024-01-01', ativo: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-  ]);
+  ];
 
-  const [transacoes, setTransacoes] = useState<TransacaoBanco[]>([
+  const initialTransacoes: TransacaoBanco[] = [
      // Saldos Iniciais
      { id: 'si-1', conta_id: 'b8d8e5e6-c5a4-4c4f-9b1d-2f0a1c2b3d4e', data: '2024-07-01', valor: 1500, categoria_id: 't3d4e5f6-a7b8-4c9d-0e1f-2a3b4c5d6e71', tipo: TipoCategoria.Transferencia, descricao: 'Saldo inicial da conta', previsto: false, realizado: true, meta_saldo_inicial: true },
      { id: 'si-2', conta_id: 'a1b2c3d4-e5f6-7890-1234-567890abcdef', data: '2024-01-01', valor: 10000, categoria_id: 't3d4e5f6-a7b8-4c9d-0e1f-2a3b4c5d6e71', tipo: TipoCategoria.Transferencia, descricao: 'Saldo inicial da conta', previsto: false, realizado: true, meta_saldo_inicial: true },
@@ -62,13 +88,18 @@ const App: React.FC = () => {
      { id: '7a6b5c4d-3e2f-1098-7654-3210fedcba98', conta_id: 'b8d8e5e6-c5a4-4c4f-9b1d-2f0a1c2b3d4e', data: '2024-07-05', valor: 800, categoria_id: 's1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c52', tipo: TipoCategoria.Saida, descricao: 'Supermercado', previsto: false, realizado: true },
      { id: 't-par-1', conta_id: 'a1b2c3d4-e5f6-7890-1234-567890abcdef', data: '2024-07-10', valor: 1000, categoria_id: 't3d4e5f6-a7b8-4c9d-0e1f-2a3b4c5d6e70', tipo: TipoCategoria.Transferencia, descricao: 'Transferência para CC: Mesada', previsto: false, realizado: true, transferencia_par_id: 't-par-1-entrada' },
      { id: 't-par-1-entrada', conta_id: 'b8d8e5e6-c5a4-4c4f-9b1d-2f0a1c2b3d4e', data: '2024-07-10', valor: 1000, categoria_id: 't3d4e5f6-a7b8-4c9d-0e1f-2a3b4c5d6e70', tipo: TipoCategoria.Transferencia, descricao: 'Transferência de Poupança Itaú: Mesada', previsto: false, realizado: true, transferencia_par_id: 't-par-1' },
-  ]);
-  
-  const [cartoes, setCartoes] = useState<Cartao[]>([]);
-  const [categorias, setCategorias] = useState<Categoria[]>(CATEGORIAS_PADRAO);
-  const [compras, setCompras] = useState<CompraCartao[]>([]);
-  const [parcelas, setParcelas] = useState<ParcelaCartao[]>([]);
-  const [metas, setMetas] = useState<Meta[]>([]);
+  ];
+
+  const [contas, setContas] = usePersistentState<ContaBancaria[]>('contas', initialContas);
+  const [transacoes, setTransacoes] = usePersistentState<TransacaoBanco[]>('transacoes', initialTransacoes);
+  const [cartoes, setCartoes] = usePersistentState<Cartao[]>('cartoes', []);
+  const [categorias, setCategorias] = usePersistentState<Categoria[]>('categorias', CATEGORIAS_PADRAO);
+  const [compras, setCompras] = usePersistentState<CompraCartao[]>('compras', []);
+  const [parcelas, setParcelas] = usePersistentState<ParcelaCartao[]>('parcelas', []);
+  const [objetivos, setObjetivos] = usePersistentState<ObjetivoInvestimento[]>('objetivos', []);
+  const [profilePicture, setProfilePicture] = usePersistentState<string | null>('profilePicture', null);
+  const [imageToCrop, setImageToCrop] = useState<string | null>(null);
+
   const [csvImportState, setCsvImportState] = useState<CsvImportState>(null);
   const [csvDestinoConta, setCsvDestinoConta] = useState<string>('');
   const [csvNewAccountName, setCsvNewAccountName] = useState('');
@@ -90,8 +121,64 @@ const App: React.FC = () => {
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
       setToast({ message, type });
-      setTimeout(() => setToast(null), 5000);
   };
+  
+  // Recurring Transactions Logic
+  useEffect(() => {
+    const lastCheck = localStorage.getItem('lastRecurringCheck');
+    const todayStr = new Date().toISOString().slice(0, 10);
+    // Avoid running on every hot-reload in dev, run once per day in prod.
+    if (lastCheck === todayStr && process.env.NODE_ENV !== 'development') {
+        return;
+    }
+
+    const now = new Date();
+    const newTransactions: TransacaoBanco[] = [];
+    const uniqueRecorrenciaIds = [...new Set(transacoes.map(t => t.recorrencia_id).filter(Boolean))];
+
+    uniqueRecorrenciaIds.forEach(recorrenciaId => {
+        const group = transacoes.filter(t => t.recorrencia_id === recorrenciaId);
+        const template = group.find(t => t.recorrencia); // The one with the rule
+        const lastInstance = group.reduce((latest, current) => new Date(latest.data) > new Date(current.data) ? latest : current);
+        
+        if (!template) return;
+
+        let nextDate = new Date(`${lastInstance.data}T12:00:00Z`);
+
+        const advanceDate = () => {
+            switch(template.recorrencia) {
+                case 'diario': nextDate.setUTCDate(nextDate.getUTCDate() + 1); break;
+                case 'semanal': nextDate.setUTCDate(nextDate.getUTCDate() + 7); break;
+                case 'mensal': nextDate.setUTCMonth(nextDate.getUTCMonth() + 1); break;
+                case 'anual': nextDate.setUTCFullYear(nextDate.getUTCFullYear() + 1); break;
+            }
+        };
+
+        advanceDate(); // Move to the next potential date
+
+        while (nextDate <= now) {
+            newTransactions.push({
+                ...template,
+                id: crypto.randomUUID(),
+                data: nextDate.toISOString().slice(0, 10),
+                recorrencia: null, // Generated instances are not templates
+                previsto: true,
+                realizado: false,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+            });
+            advanceDate();
+        }
+    });
+
+    if (newTransactions.length > 0) {
+        setTransacoes(prev => [...prev, ...newTransactions]);
+        showToast(`${newTransactions.length} transações recorrentes foram criadas.`, 'info');
+    }
+
+    localStorage.setItem('lastRecurringCheck', todayStr);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run on mount
 
   // Handlers Contas
   const handleAddConta = (contaData: { nome: string; saldo_inicial: number; ativo: boolean; data_inicial: string; }): ContaBancaria | null => {
@@ -278,6 +365,7 @@ const App: React.FC = () => {
             id: crypto.randomUUID(),
             tipo: categoria.tipo,
             descricao: novaTransacao.descricao.trim().substring(0, 200),
+            recorrencia_id: novaTransacao.recorrencia ? crypto.randomUUID() : null, // Set group ID if it's a new recurring tx
             createdAt: agora,
             updatedAt: agora,
         };
@@ -474,6 +562,27 @@ const App: React.FC = () => {
     });
   };
   
+    const handleMassCategoryUpdate = (ids: string[], newCategoryId: string) => {
+        const newCategory = categorias.find(c => c.id === newCategoryId);
+        if (!newCategory) {
+            showToast("Categoria de destino não encontrada.", "error");
+            return;
+        }
+
+        setTransacoes(prev => prev.map(t => {
+            if (ids.includes(t.id)) {
+                return {
+                    ...t,
+                    categoria_id: newCategoryId,
+                    tipo: newCategory.tipo,
+                    updatedAt: new Date().toISOString(),
+                };
+            }
+            return t;
+        }));
+        showToast(`${ids.length} transações atualizadas com sucesso.`);
+    };
+
   const handleTransferencia = (origemId: string, destinoId: string, valor: number, data: string, descricao: string): boolean => {
     const categoriaTransf = categorias.find(c => c.nome === "Transferência" && c.sistema);
     if (!categoriaTransf) {
@@ -672,19 +781,19 @@ const App: React.FC = () => {
         }
     };
 
-  // Handlers Metas
-    const handleAddMeta = (metaData: Omit<Meta, 'id' | 'categoria_id' | 'createdAt' | 'updatedAt'>) => {
+  // Handlers Objetivos
+    const handleAddObjetivo = (objetivoData: Omit<ObjetivoInvestimento, 'id' | 'categoria_id' | 'createdAt' | 'updatedAt'>) => {
         const agora = new Date().toISOString();
         const novaCategoriaInvestimento: Categoria = {
             id: crypto.randomUUID(),
-            nome: `Meta: ${metaData.nome}`,
+            nome: `Objetivo: ${objetivoData.nome}`,
             tipo: TipoCategoria.Investimento,
             sistema: true, // Mark as system-managed category tied to a goal
             createdAt: agora,
             updatedAt: agora,
         };
-        const novaMeta: Meta = {
-            ...metaData,
+        const novoObjetivo: ObjetivoInvestimento = {
+            ...objetivoData,
             id: crypto.randomUUID(),
             categoria_id: novaCategoriaInvestimento.id,
             createdAt: agora,
@@ -692,30 +801,30 @@ const App: React.FC = () => {
         };
 
         setCategorias(prev => [...prev, novaCategoriaInvestimento]);
-        setMetas(prev => [...prev, novaMeta]);
-        showToast(`Meta "${metaData.nome}" criada com sucesso.`);
+        setObjetivos(prev => [...prev, novoObjetivo]);
+        showToast(`Objetivo "${objetivoData.nome}" criado com sucesso.`);
     };
 
-    const handleUpdateMeta = (metaAtualizada: Meta) => {
-        setMetas(prev => prev.map(m => m.id === metaAtualizada.id ? { ...metaAtualizada, updatedAt: new Date().toISOString() } : m));
+    const handleUpdateObjetivo = (objetivoAtualizado: ObjetivoInvestimento) => {
+        setObjetivos(prev => prev.map(m => m.id === objetivoAtualizado.id ? { ...objetivoAtualizado, updatedAt: new Date().toISOString() } : m));
         // Also update the associated category name if the goal name changed
-        const categoriaAssociada = categorias.find(c => c.id === metaAtualizada.categoria_id);
-        if (categoriaAssociada && categoriaAssociada.nome !== `Meta: ${metaAtualizada.nome}`) {
-            const categoriaAtualizada = { ...categoriaAssociada, nome: `Meta: ${metaAtualizada.nome}`, updatedAt: new Date().toISOString() };
+        const categoriaAssociada = categorias.find(c => c.id === objetivoAtualizado.categoria_id);
+        if (categoriaAssociada && categoriaAssociada.nome !== `Objetivo: ${objetivoAtualizado.nome}`) {
+            const categoriaAtualizada = { ...categoriaAssociada, nome: `Objetivo: ${objetivoAtualizado.nome}`, updatedAt: new Date().toISOString() };
             setCategorias(prev => prev.map(c => c.id === categoriaAssociada.id ? categoriaAtualizada : c));
         }
-        showToast("Meta atualizada com sucesso.");
+        showToast("Objetivo atualizado com sucesso.");
     };
 
-    const handleDeleteMeta = (metaId: string) => {
-        const meta = metas.find(m => m.id === metaId);
-        if (!meta) return;
+    const handleDeleteObjetivo = (objetivoId: string) => {
+        const objetivo = objetivos.find(m => m.id === objetivoId);
+        if (!objetivo) return;
 
-        const transacoesNaMeta = transacoes.some(t => t.categoria_id === meta.categoria_id);
+        const transacoesNaMeta = transacoes.some(t => t.categoria_id === objetivo.categoria_id);
         if (transacoesNaMeta) {
             setConfirmation({
                 title: "Exclusão Bloqueada",
-                message: `Não é possível excluir a meta "${meta.nome}" porque existem investimentos associados a ela. Exclua as transações de investimento primeiro.`,
+                message: `Não é possível excluir o objetivo "${objetivo.nome}" porque existem investimentos associados a ele. Exclua as transações de investimento primeiro.`,
                 buttons: [{ label: 'Entendi', onClick: () => setConfirmation(null), style: 'primary' }]
             });
             return;
@@ -723,25 +832,25 @@ const App: React.FC = () => {
 
         setConfirmation({
             title: "Confirmar Exclusão",
-            message: `Tem certeza que deseja excluir a meta "${meta.nome}"? A categoria de investimento associada também será removida.`,
+            message: `Tem certeza que deseja excluir o objetivo "${objetivo.nome}"? A categoria de investimento associada também será removida.`,
             buttons: [
                 { label: 'Cancelar', onClick: () => setConfirmation(null), style: 'secondary' },
                 {
                     label: 'Excluir', onClick: () => {
-                        setMetas(prev => prev.filter(m => m.id !== metaId));
-                        setCategorias(prev => prev.filter(c => c.id !== meta.categoria_id));
+                        setObjetivos(prev => prev.filter(m => m.id !== objetivoId));
+                        setCategorias(prev => prev.filter(c => c.id !== objetivo.categoria_id));
                         setConfirmation(null);
-                        showToast("Meta excluída com sucesso.");
+                        showToast("Objetivo excluído com sucesso.");
                     }, style: 'danger'
                 }
             ]
         });
     };
 
-    const handleAdicionarDinheiroMeta = (metaId: string, contaId: string, valor: number, data: string): boolean => {
-        const meta = metas.find(m => m.id === metaId);
-        if (!meta) {
-            showToast("Meta não encontrada.", "error");
+    const handleAdicionarDinheiroObjetivo = (objetivoId: string, contaId: string, valor: number, data: string): boolean => {
+        const objetivo = objetivos.find(m => m.id === objetivoId);
+        if (!objetivo) {
+            showToast("Objetivo não encontrado.", "error");
             return false;
         }
 
@@ -770,9 +879,9 @@ const App: React.FC = () => {
             return false;
         }
     
-        const categoria = categorias.find(c => c.id === meta.categoria_id);
+        const categoria = categorias.find(c => c.id === objetivo.categoria_id);
         if (!categoria || categoria.tipo !== TipoCategoria.Investimento) {
-            showToast("Categoria de investimento da meta é inválida.", "error");
+            showToast("Categoria de investimento do objetivo é inválida.", "error");
             return false;
         }
         
@@ -780,8 +889,8 @@ const App: React.FC = () => {
             conta_id: contaId,
             data,
             valor,
-            categoria_id: meta.categoria_id,
-            descricao: `Investimento para meta: ${meta.nome}`,
+            categoria_id: objetivo.categoria_id,
+            descricao: `Investimento para objetivo: ${objetivo.nome}`,
             previsto: false,
             realizado: true,
             tipo: categoria.tipo,
@@ -795,7 +904,7 @@ const App: React.FC = () => {
             updatedAt: agora,
         };
         setTransacoes(prev => [...prev, transacaoComId]);
-        showToast(`Investimento para "${meta.nome}" registrado com sucesso.`);
+        showToast(`Investimento para "${objetivo.nome}" registrado com sucesso.`);
         return true;
     };
 
@@ -803,18 +912,31 @@ const App: React.FC = () => {
     const handleDeleteAllData = () => {
         setConfirmation({
             title: "APAGAR TODOS OS DADOS",
-            message: "Esta ação é irreversível e removerá todas as contas, cartões, transações, metas e configurações. Tem certeza absoluta?",
+            message: "Esta ação é irreversível e removerá todas as contas, cartões, transações, objetivos e configurações. Tem certeza absoluta?",
             buttons: [
                 { label: 'Cancelar', onClick: () => setConfirmation(null), style: 'secondary' },
                 {
                     label: 'Sim, apagar tudo', onClick: () => {
-                        setContas([]);
-                        setTransacoes([]);
+                        // Clear localStorage by removing the keys
+                        localStorage.removeItem('contas');
+                        localStorage.removeItem('transacoes');
+                        localStorage.removeItem('cartoes');
+                        localStorage.removeItem('compras');
+                        localStorage.removeItem('parcelas');
+                        localStorage.removeItem('objetivos');
+                        localStorage.removeItem('categorias');
+                        localStorage.removeItem('profilePicture');
+                        
+                        // Reset state to initial values
+                        setContas(initialContas);
+                        setTransacoes(initialTransacoes);
                         setCartoes([]);
                         setCompras([]);
                         setParcelas([]);
-                        setMetas([]);
-                        setCategorias(CATEGORIAS_PADRAO); // Reset to default
+                        setObjetivos([]);
+                        setCategorias(CATEGORIAS_PADRAO);
+                        setProfilePicture(null);
+                        
                         setConfirmation(null);
                         showToast("Todos os dados foram apagados.", "info");
                         setCurrentPage('resumo');
@@ -831,8 +953,9 @@ const App: React.FC = () => {
             cartoes,
             compras,
             parcelas,
-            metas,
+            objetivos,
             categorias,
+            profilePicture,
         };
         const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(data, null, 2))}`;
         const link = document.createElement("a");
@@ -963,8 +1086,9 @@ const App: React.FC = () => {
                                         setCartoes(importedData.cartoes || []);
                                         setCompras(importedData.compras || []);
                                         setParcelas(importedData.parcelas || []);
-                                        setMetas(importedData.metas || []);
+                                        setObjetivos(importedData.objetivos || []);
                                         setCategorias(importedData.categorias || CATEGORIAS_PADRAO);
+                                        setProfilePicture(importedData.profilePicture || null);
                                         setConfirmation(null);
                                         showToast("Dados importados com sucesso.", "success");
                                         setCurrentPage('resumo');
@@ -1405,6 +1529,7 @@ const App: React.FC = () => {
                     addConta={handleAddConta} updateConta={handleUpdateConta} deleteConta={handleDeleteConta}
                     deleteTransacao={handleDeleteTransacao} 
                     deleteTransacoes={handleDeleteTransacoes}
+                    updateTransacoesCategoria={handleMassCategoryUpdate}
                     navigationState={navigationState}
                     clearNavigationState={clearNavigationState}
                     {...pageProps}
@@ -1428,32 +1553,37 @@ const App: React.FC = () => {
                   selectedMonth={selectedMonth} 
                   onMonthChange={setSelectedMonth} 
                 />;
-      case 'categorias':
-        return <CategoriasPage 
+      case 'investimentos':
+        return <InvestimentosPage 
+                    objetivos={objetivos}
+                    transacoes={transacoes}
+                    contas={contas}
+                    addObjetivo={handleAddObjetivo}
+                    updateObjetivo={handleUpdateObjetivo}
+                    deleteObjetivo={handleDeleteObjetivo}
+                    adicionarDinheiroObjetivo={handleAdicionarDinheiroObjetivo}
+                    {...{modalState, openModal, closeModal}}
+                />;
+       case 'perfil':
+        return <PerfilPage
                     categorias={categorias} 
                     transacoes={transacoes} 
                     compras={compras}
                     parcelas={parcelas}
                     selectedMonth={selectedMonth}
                     onMonthChange={setSelectedMonth}
-                    addCategoria={handleAddCategoria} updateCategoria={handleUpdateCategoria} deleteCategoria={handleDeleteCategoria} {...{modalState, openModal, closeModal}} />;
-      case 'metas':
-        return <MetasPage 
-                    metas={metas}
-                    transacoes={transacoes}
-                    contas={contas}
-                    addMeta={handleAddMeta}
-                    updateMeta={handleUpdateMeta}
-                    deleteMeta={handleDeleteMeta}
-                    adicionarDinheiroMeta={handleAdicionarDinheiroMeta}
-                    {...{modalState, openModal, closeModal}}
-                />;
-       case 'configuracoes':
-        return <ConfiguracoesPage 
+                    addCategoria={handleAddCategoria} 
+                    updateCategoria={handleUpdateCategoria} 
+                    deleteCategoria={handleDeleteCategoria}
                     handleDeleteAllData={handleDeleteAllData}
                     handleExportData={handleExportData}
                     handleImportData={handleImportData}
+                    {...{modalState, openModal, closeModal}}
                 />;
+      case 'calculadora-juros-compostos':
+        return <CalculadoraJurosCompostosPage />;
+      case 'calculadora-reserva-emergencia':
+        return <CalculadoraReservaEmergenciaPage />;
       default:
         return <ResumoPage
                     contas={contas}
@@ -1470,31 +1600,15 @@ const App: React.FC = () => {
 
   const editingTransacao = modalState.data?.transacao as TransacaoBanco | null;
 
-  const [year, month] = selectedMonth.split('-').map(Number);
-  const fabContext = {
-    currentPage: currentPage,
-    selectedAccountId: currentPage === 'contas-extrato' ? selectedViewId : null,
-    selectedCardId: currentPage === 'cartoes' ? selectedViewId : null,
-    visibleYear: year,
-    visibleMonth: month,
-    selectedDay: null, // Fluxo page day selection not implemented
-    hasAnyAccount: contas.length > 0,
-    hasAnyCard: cartoes.length > 0,
-  };
-
-  const handleOpenNewCardPurchase = (opts: { cardId?: string | null; dateISO: string; }) => {
-    openModal('nova-compra-cartao', {
-      cartaoId: opts.cardId,
-      prefillDate: opts.dateISO,
-    });
-  };
-
-  const handleOpenNewBankTransaction = (opts: { accountId?: string | null; dateISO: string; }) => {
-    openModal('nova-transacao', {
-      contaId: opts.accountId,
-      prefillDate: opts.dateISO,
-    });
-  };
+  const handleNewTransaction = () => openModal('nova-transacao', {
+    contaId: currentPage === 'contas-extrato' && selectedViewId !== 'all' ? selectedViewId : undefined,
+    prefillDate: new Date().toISOString().slice(0, 7) === selectedMonth ? getTodayString() : `${selectedMonth}-15`,
+  });
+  
+  const handleNewCardPurchase = () => openModal('nova-compra-cartao', {
+    cartaoId: currentPage === 'cartoes' && selectedViewId !== 'all' ? selectedViewId : undefined,
+    prefillDate: new Date().toISOString().slice(0, 7) === selectedMonth ? getTodayString() : `${selectedMonth}-15`,
+  });
 
     const countSelectedCsv = csvImportState?.transactions.filter(t => t.selected).length || 0;
     const areAllCsvSelected = csvImportState ? countSelectedCsv === csvImportState.transactions.filter(t => !t.isDuplicate).length : false;
@@ -1503,16 +1617,44 @@ const App: React.FC = () => {
     <>
       <div className="flex h-screen w-full bg-gray-900 font-sans">
         <Sidebar currentPage={currentPage} setCurrentPage={(p) => handlePageChange(p)} />
-        <main className="flex-1 ml-64 p-8 overflow-y-auto">
-          {renderPage()}
-        </main>
+        
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <Header 
+            setCurrentPage={(p) => handlePageChange(p)}
+            profilePicture={profilePicture}
+            onImageSelect={setImageToCrop}
+            onImageRemove={() => {
+                setProfilePicture(null);
+                showToast("Foto de perfil removida.");
+            }}
+          />
+          <main className="flex-1 p-4 md:p-8 overflow-y-auto pb-28 md:pb-8">
+              {renderPage()}
+          </main>
+        </div>
       </div>
 
-      <GlobalFAB
-        context={fabContext}
-        openNewCardPurchase={handleOpenNewCardPurchase}
-        openNewBankTransaction={handleOpenNewBankTransaction}
+      <BottomNav
+        currentPage={currentPage}
+        setCurrentPage={(p) => handlePageChange(p)}
+        onNewTransaction={handleNewTransaction}
+        onNewCardPurchase={handleNewCardPurchase}
+        hasAnyAccount={contas.length > 0}
+        hasAnyCard={cartoes.length > 0}
       />
+      
+      {imageToCrop && (
+        <ImageCropModal 
+          imageSrc={imageToCrop}
+          onClose={() => setImageToCrop(null)}
+          onSave={(croppedImage) => {
+            setProfilePicture(croppedImage);
+            setImageToCrop(null);
+            showToast("Foto de perfil atualizada com sucesso!");
+          }}
+        />
+      )}
+
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
       {confirmation && <ConfirmationModal data={confirmation} onClose={() => setConfirmation(null)} />}
       
@@ -1706,7 +1848,7 @@ const App: React.FC = () => {
                 </div>
             </form>
         </Modal>
-
+        {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     </>
   );
 };

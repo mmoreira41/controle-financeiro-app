@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Lovable Finanças</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://esm.sh/react-image-crop@11.0.6/dist/ReactCrop.css">
     <style>
       /* Custom scrollbar for a more modern look */
       ::-webkit-scrollbar {
@@ -38,6 +39,14 @@
       .animate-fade-in-down {
         animation: fadeInDown 0.3s ease-out forwards;
       }
+
+      @keyframes fadeInUp {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .animate-fade-in-up {
+        animation: fadeInUp 0.3s ease-out forwards;
+      }
       
       /* Utility to hide scrollbars */
       .no-scrollbar::-webkit-scrollbar {
@@ -47,6 +56,9 @@
         -ms-overflow-style: none;  /* IE and Edge */
         scrollbar-width: none;  /* Firefox */
       }
+      .ReactCrop__crop-selection {
+        border: 2px dashed #fff;
+      }
     </style>
   <script type="importmap">
 {
@@ -55,13 +67,13 @@
     "react/": "https://esm.sh/react@^19.1.1/",
     "react": "https://esm.sh/react@^19.1.1",
     "lucide-react": "https://esm.sh/lucide-react@^0.539.0",
-    "recharts": "https://esm.sh/recharts@^2.12.7"
+    "recharts": "https://esm.sh/recharts@^2.12.7",
+    "react-image-crop": "https://esm.sh/react-image-crop@11.0.6"
   }
 }
 </script>
-<link rel="stylesheet" href="/index.css">
 </head>
-  <body class="bg-gray-900 text-gray-100">
+  <body class="bg-gradient-to-b from-gray-900 to-black text-gray-100 min-h-screen">
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
   </body>

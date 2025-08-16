@@ -1,7 +1,5 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { Categoria, TransacaoBanco, TipoCategoria, CompraCartao, ModalState, ParcelaCartao } from '../types';
-import PageHeader from '../components/PageHeader';
 import Modal from '../components/Modal';
 import { getCategoryIcon } from '../constants';
 import { Plus, Pencil, Trash2, Lock } from 'lucide-react';
@@ -158,9 +156,6 @@ const CategoriasPage: React.FC<CategoriasPageProps> = ({
 
   return (
     <div className="animate-fade-in">
-        <div className="text-center">
-            <h2 className="text-3xl font-bold text-white mb-2">Categorias e Orçamentos</h2>
-        </div>
         <div className="flex justify-center mb-6">
             <DatePeriodSelector selectedMonth={selectedMonth} onMonthChange={onMonthChange} />
         </div>

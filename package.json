@@ -12,7 +12,8 @@
     "react-dom": "^19.1.1",
     "react": "^19.1.1",
     "lucide-react": "^0.539.0",
-    "recharts": "^2.12.7"
+    "recharts": "^2.12.7",
+    "react-image-crop": "11.0.6"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

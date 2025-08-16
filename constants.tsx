@@ -1,6 +1,5 @@
-
 import React from 'react';
-import { CreditCard, Landmark, Waves, BarChartBig, Shapes, HelpCircle, Target, Settings } from 'lucide-react';
+import { CreditCard, Landmark, Waves, BarChartBig, Shapes, HelpCircle, Target, Settings, TrendingUp } from 'lucide-react';
 import { TipoCategoria, Categoria, Page } from './types';
 
 export const CATEGORIAS_PADRAO: Categoria[] = [
@@ -43,14 +42,12 @@ export const CATEGORIAS_PADRAO: Categoria[] = [
   { "id": "t3d4e5f6-a7b8-4c9d-0e1f-2a3b4c5d6e72", "nome": "Pagamento de Cartão", "tipo": TipoCategoria.Transferencia, "sistema": true }
 ];
 
-export const NAV_ITEMS: { id: Page; label: string; icon: React.ReactNode }[] = [
+export const NAV_ITEMS: { id: Page; label: string; icon: React.ReactElement }[] = [
     { id: 'resumo', label: 'Resumo', icon: <BarChartBig size={20} /> },
     { id: 'contas-extrato', label: 'Contas e Extrato', icon: <Landmark size={20} /> },
     { id: 'cartoes', label: 'Cartões', icon: <CreditCard size={20} /> },
     { id: 'fluxo', label: 'Fluxo de Caixa', icon: <Waves size={20} /> },
-    { id: 'categorias', label: 'Categorias e Orçamentos', icon: <Shapes size={20} /> },
-    { id: 'metas', label: 'Metas', icon: <Target size={20} /> },
-    { id: 'configuracoes', label: 'Configurações', icon: <Settings size={20} /> },
+    { id: 'investimentos', label: 'Investimentos', icon: <TrendingUp size={20} /> },
 ];
 
 export const UNKNOWN_CATEGORY: Categoria = {

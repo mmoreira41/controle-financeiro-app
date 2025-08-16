@@ -1,7 +1,3 @@
-
-
-
-
 export enum TipoCategoria {
   Entrada = 'Entrada',
   Saida = 'Saida',
@@ -99,7 +95,7 @@ export interface ParcelaCartao {
   updatedAt?: string;
 }
 
-export interface Meta {
+export interface ObjetivoInvestimento {
     id: string;
     nome: string;
     valor_meta: number;
@@ -109,7 +105,7 @@ export interface Meta {
     updatedAt?: string;
 }
 
-export type Page = 'contas-extrato' | 'cartoes' | 'fluxo' | 'resumo' | 'categorias' | 'metas' | 'configuracoes';
+export type Page = 'contas-extrato' | 'cartoes' | 'fluxo' | 'resumo' | 'investimentos' | 'perfil' | 'calculadora-juros-compostos' | 'calculadora-reserva-emergencia';
 
 export type ModalState = {
     modal: string | null;
