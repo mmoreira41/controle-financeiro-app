@@ -22,6 +22,10 @@ import SearchModal from './components/SearchModal';
 import { Page, ContaBancaria, TransacaoBanco, Cartao, Categoria, CompraCartao, ParcelaCartao, TipoCategoria, ModalState, NavigationState, ObjetivoInvestimento, Settings } from './types';
 import { CATEGORIAS_PADRAO, CORES_CARTAO } from './constants';
 import { formatCurrency, computeFirstCompetency, addMonths, ymToISOFirstDay, splitInstallments, parseBrDate, parseCurrency, formatDate, calculateSaldo } from './utils/format';
+import { useAuth } from './src/contexts/AuthContext';
+import { useTransacoes } from './src/hooks/useTransacoes';
+import { useContas } from './src/hooks/useContas';
+import { useCategorias } from './src/hooks/useCategorias';
 
 
 type CsvTransaction = { data: string; descricao: string; valor: number; originalLine: string };
@@ -62,6 +66,32 @@ function usePersistentState<T>(key: string, initialValue: T): [T, React.Dispatch
 
 
 const App: React.FC = () => {
+  // 🔧 CORREÇÃO CRÍTICA: Usar hooks do Supabase em vez de localStorage
+  const { user } = useAuth();
+  const { 
+    transacoes, 
+    loading: transacoesLoading, 
+    addTransacao, 
+    updateTransacao, 
+    deleteTransacao,
+    createTransferencia,
+    toggleRealizado
+  } = useTransacoes();
+  const { 
+    contas, 
+    loading: contasLoading, 
+    addConta, 
+    updateConta, 
+    deleteConta 
+  } = useContas();
+  const { 
+    categorias, 
+    loading: categoriasLoading, 
+    addCategoria, 
+    updateCategoria, 
+    deleteCategoria 
+  } = useCategorias();
+
   const [currentPage, setCurrentPage] = useState<Page>('resumo');
   const [selectedViewId, setSelectedViewId] = useState<'all' | string>('all');
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
@@ -74,27 +104,17 @@ const App: React.FC = () => {
   
   const getTodayString = () => new Date().toISOString().split('T')[0];
 
-  // Mock Data (used only for the first load if localStorage is empty)
-  const initialContas: ContaBancaria[] = [
-    { id: 'b8d8e5e6-c5a4-4c4f-9b1d-2f0a1c2b3d4e', nome: 'Conta Corrente Nu', saldo_inicial: 0, data_inicial: '2024-07-01', ativo: true, cor: '#a855f7', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-    { id: 'a1b2c3d4-e5f6-7890-1234-567890abcdef', nome: 'Poupança Itaú', saldo_inicial: 0, data_inicial: '2024-01-01', ativo: true, cor: '#f97316', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-  ];
+  // 🔧 VERIFICAÇÃO: Apenas mostrar dados se usuário está logado
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="text-white text-xl">Carregando...</div>
+      </div>
+    );
+  }
 
-  const initialTransacoes: TransacaoBanco[] = [
-     // Saldos Iniciais
-     { id: 'si-1', conta_id: 'b8d8e5e6-c5a4-4c4f-9b1d-2f0a1c2b3d4e', data: '2024-07-01', valor: 1500, categoria_id: 't3d4e5f6-a7b8-4c9d-0e1f-2a3b4c5d6e71', tipo: TipoCategoria.Transferencia, descricao: 'Saldo inicial da conta', previsto: false, realizado: true, meta_saldo_inicial: true },
-     { id: 'si-2', conta_id: 'a1b2c3d4-e5f6-7890-1234-567890abcdef', data: '2024-01-01', valor: 10000, categoria_id: 't3d4e5f6-a7b8-4c9d-0e1f-2a3b4c5d6e71', tipo: TipoCategoria.Transferencia, descricao: 'Saldo inicial da conta', previsto: false, realizado: true, meta_saldo_inicial: true },
-     // Outras Transações
-     { id: '8f8e8d8c-7b6a-5432-1fed-cba987654321', conta_id: 'b8d8e5e6-c5a4-4c4f-9b1d-2f0a1c2b3d4e', data: '2024-07-01', valor: 5000, categoria_id: 'e0a1b2c3-d4e5-4f6a-8b9c-0d1e2f3a4b50', tipo: TipoCategoria.Entrada, descricao: 'Salário Julho', previsto: false, realizado: true },
-     { id: '7a6b5c4d-3e2f-1098-7654-3210fedcba98', conta_id: 'b8d8e5e6-c5a4-4c4f-9b1d-2f0a1c2b3d4e', data: '2024-07-05', valor: 800, categoria_id: 's1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c52', tipo: TipoCategoria.Saida, descricao: 'Supermercado', previsto: false, realizado: true },
-     { id: 't-par-1', conta_id: 'a1b2c3d4-e5f6-7890-1234-567890abcdef', data: '2024-07-10', valor: 1000, categoria_id: 't3d4e5f6-a7b8-4c9d-0e1f-2a3b4c5d6e70', tipo: TipoCategoria.Transferencia, descricao: 'Transferência para CC: Mesada', previsto: false, realizado: true, transferencia_par_id: 't-par-1-entrada' },
-     { id: 't-par-1-entrada', conta_id: 'b8d8e5e6-c5a4-4c4f-9b1d-2f0a1c2b3d4e', data: '2024-07-10', valor: 1000, categoria_id: 't3d4e5f6-a7b8-4c9d-0e1f-2a3b4c5d6e70', tipo: TipoCategoria.Transferencia, descricao: 'Transferência de Poupança Itaú: Mesada', previsto: false, realizado: true, transferencia_par_id: 't-par-1' },
-  ];
-
-  const [contas, setContas] = usePersistentState<ContaBancaria[]>('contas', initialContas);
-  const [transacoes, setTransacoes] = usePersistentState<TransacaoBanco[]>('transacoes', initialTransacoes);
+  // 🔧 DADOS AINDA EM LOCALSTORAGE (conversão futura):
   const [cartoes, setCartoes] = usePersistentState<Cartao[]>('cartoes', []);
-  const [categorias, setCategorias] = usePersistentState<Categoria[]>('categorias', CATEGORIAS_PADRAO);
   const [compras, setCompras] = usePersistentState<CompraCartao[]>('compras', []);
   const [parcelas, setParcelas] = usePersistentState<ParcelaCartao[]>('parcelas', []);
   const [objetivos, setObjetivos] = usePersistentState<ObjetivoInvestimento[]>('objetivos', []);

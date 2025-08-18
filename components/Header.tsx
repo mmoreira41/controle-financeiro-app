@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Page } from '../types';
-import { User, Pencil, Calendar, Search, Menu, Camera, Trash2, Settings, TrendingUp, Shield } from 'lucide-react';
+import { User, Pencil, Calendar, Search, Menu, Camera, Trash2, Settings, TrendingUp, Shield, LogOut } from 'lucide-react';
+import { useAuth } from '../src/contexts/AuthContext';
 
 interface HeaderProps {
   setCurrentPage: (page: Page, state?: { viewId: string; }) => void;
@@ -11,6 +12,7 @@ interface HeaderProps {
 }
 
 const Header: React.FC<HeaderProps> = ({ setCurrentPage, profilePicture, onImageSelect, onImageRemove, onSearchClick }) => {
+  const { signOut } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isCalcMenuOpen, setIsCalcMenuOpen] = useState(false);
   const calcMenuRef = useRef<HTMLDivElement>(null);
@@ -50,6 +52,31 @@ const Header: React.FC<HeaderProps> = ({ setCurrentPage, profilePicture, onImage
   const handleRemoveImage = () => {
     onImageRemove();
     setIsEditMenuOpen(false);
+  };
+
+  const handleLogout = async () => {
+    try {
+      console.log('🚪 Iniciando logout...');
+      setIsCalcMenuOpen(false);
+      
+      // Mostrar feedback visual
+      const button = document.querySelector('[data-logout-btn]') as HTMLButtonElement;
+      if (button) {
+        button.textContent = 'Saindo...';
+        button.disabled = true;
+      }
+      
+      await signOut();
+      console.log('✅ Logout concluído');
+    } catch (error) {
+      console.error('❌ Erro no logout:', error);
+      // Restaurar botão em caso de erro
+      const button = document.querySelector('[data-logout-btn]') as HTMLButtonElement;
+      if (button) {
+        button.textContent = 'Sair da Conta';
+        button.disabled = false;
+      }
+    }
   };
 
   useEffect(() => {
@@ -141,6 +168,14 @@ const Header: React.FC<HeaderProps> = ({ setCurrentPage, profilePicture, onImage
                                 <Settings size={16} />
                                 <span>Configurações</span>
                             </a>
+                            <button 
+                                onClick={handleLogout} 
+                                data-logout-btn
+                                className="flex items-center space-x-3 w-full text-left px-3 py-2 text-sm text-red-400 rounded-md hover:bg-gray-700 hover:text-red-300 transition-colors disabled:opacity-50"
+                            >
+                                <LogOut size={16} />
+                                <span>Sair da Conta</span>
+                            </button>
                             
                             <div className="border-t border-gray-700 my-1"></div>
                             
